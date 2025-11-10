@@ -17,7 +17,7 @@ def test_load_config_contains_sections(tmp_path):
     """config.yaml 기본 섹션 존재 여부 테스트"""
     cfg_file = tmp_path / "config.yaml"
     cfg_file.write_text("""
-Classifier:
+classifier:
   data:
     input_dir: "data/original"
   train:
@@ -45,7 +45,7 @@ def test_init_wandb_disabled(tmp_path):
     """wandb 비활성화 시 None 반환"""
     cfg_file = tmp_path / "config.yaml"
     cfg_file.write_text("""
-Classifier:
+classifier:
   data:
     input_dir: "data/original"
   train:
@@ -65,7 +65,7 @@ def test_init_wandb_enabled(mock_init, tmp_path):
     """wandb 활성화 시 init 호출 여부"""
     cfg_file = tmp_path / "config.yaml"
     cfg_file.write_text("""
-Classifier:
+classifier:
   data:
     input_dir: "data/original_crop/yolov2"
   train:
@@ -166,7 +166,7 @@ def test_classifier_run(mock_eval_run, mock_get_model, mock_train_model, tmp_pat
 
     cfg_file = tmp_path / "config.yaml"
     cfg_file.write_text(f"""
-Classifier:
+classifier:
   data:
     input_dir: "{data_dir}"
   train:
