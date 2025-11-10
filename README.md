@@ -108,10 +108,12 @@ python src/classifier/classifier.py
 - The original dataset was provided by an industry partner and cannot be shared publicly.
 - Hence, sample images are included under data/sample/ for demonstration purposes.
 
-|       | Original      | Original Crop |  Generation   | Generation Crop |
-|       | ![repair_orig_01](data/sample/original/repair/img_01.png) | ![repair_orig_crop01](data/sample/original_crop/yolov5/repair/img_01.png) | ![repair_gen_01](data/sample/generation/repair/img_01.png) |  ![repair_gen_crop_01](data/sample/generation_crop/yolov5/repair/img_01.png)  |
-|  repair   | ![repair_orig_02](data/sample/original/repair/img_02.jpg) | ![repair_orig_crop02](data/sample/original_crop/yolov5/repair/img_02.jpg) | ![repair_gen_02](data/sample/generation/repair/img_02.jpg) |  ![repair_gen_crop_02](data/sample/generation_crop/yolov5/repair/img_02.jpg)  |
-|       | ![repair_orig_03](data/sample/original/repair/img_03.jpg) | ![repair_orig_crop03](data/sample/original_crop/yolov5/repair/img_03.jpg) | ![repair_gen_03](data/sample/generation/repair/img_03.jpg) |  ![repair_gen_crop_03](data/sample/generation_crop/yolov5/repair/img_03.jpg)  |
-|       | ![replace_orig_01](data/sample/original/replace/img_01.jpg) | ![replace_orig_crop01](data/sample/original_crop/yolov5/replace/img_01.jpg) | ![replace_gen_01](data/sample/generation/replace/img_01.jpg) |  ![replace_gen_crop_01](data/sample/generation_crop/yolov5/replace/img_01.jpg)  |
-|   replace    | ![replace_orig_02](data/sample/original/replace/img_02.jpg) | ![replace_orig_crop02](data/sample/original_crop/yolov5/replace/img_02.jpg) | ![replace_gen_02](data/sample/generation/replace/img_02.jpg) |  ![replace_gen_crop_02](data/sample/generation_crop/yolov5/replace/img_02.jpg)  |
-|       | ![replace_orig_03](data/sample/original/replace/img_03.jpg) | ![replace_orig_crop03](data/sample/original_crop/yolov5/replace/img_03.jpg) | ![replace_gen_03](data/sample/generation/replace/img_03.jpg) |  ![replace_gen_crop_03](data/sample/generation_crop/yolov5/replace/img_03.jpg)  |
+| Category | Original | Original Crop | Generation | Generation Crop |
+|:---------:|:---------:|:--------------:|:------------:|:----------------:|
+|           | ![repair_orig_01](data/sample/original/repair/img_01.png) | ![repair_orig_crop01](data/sample/original_crop/yolov5/repair/img_01.png) | ![repair_gen_01](data/sample/generation/repair/img_01.png) | ![repair_gen_crop_01](data/sample/generation_crop/yolov5/repair/img_01.png) |
+| **Repair** | ![repair_orig_02](data/sample/original/repair/img_02.jpg) | ![repair_orig_crop02](data/sample/original_crop/yolov5/repair/img_02.jpg) | ![repair_gen_02](data/sample/generation/repair/img_02.jpg) | ![repair_gen_crop_02](data/sample/generation_crop/yolov5/repair/img_02.jpg) |
+|           | ![repair_orig_03](data/sample/original/repair/img_03.jpg) | ![repair_orig_crop03](data/sample/original_crop/yolov5/repair/img_03.jpg) | ![repair_gen_03](data/sample/generation/repair/img_03.jpg) | ![repair_gen_crop_03](data/sample/generation_crop/yolov5/repair/img_03.jpg) |
+|           | ![replace_orig_01](data/sample/original/replace/img_01.jpg) | ![replace_orig_crop01](data/sample/original_crop/yolov5/replace/img_01.jpg) | ![replace_gen_01](data/sample/generation/replace/img_01.jpg) | ![replace_gen_crop_01](data/sample/generation_crop/yolov5/replace/img_01.jpg) |
+| **Replace** | ![replace_orig_02](data/sample/original/replace/img_02.jpg) | ![replace_orig_crop02](data/sample/original_crop/yolov5/replace/img_02.jpg) | ![replace_gen_02](data/sample/generation/replace/img_02.jpg) | ![replace_gen_crop_02](data/sample/generation_crop/yolov5/replace/img_02.jpg) |
+|           | ![replace_orig_03](data/sample/original/replace/img_03.jpg) | ![replace_orig_crop03](data/sample/original_crop/yolov5/replace/img_03.jpg) | ![replace_gen_03](data/sample/generation/replace/img_03.jpg) | ![replace_gen_crop_03](data/sample/generation_crop/yolov5/replace/img_03.jpg) |
+
