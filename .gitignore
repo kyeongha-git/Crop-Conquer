@@ -261,3 +261,7 @@ data/*
 !data/sample/
 !data/sample/**
 !requirements.txt
+
+# Assets (Always include images for README/docs)
+!assets/
+!assets/**

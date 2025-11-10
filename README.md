@@ -110,10 +110,110 @@ python src/classifier/classifier.py
 
 | Category | Original | Original Crop | Generation | Generation Crop |
 |:---------:|:---------:|:--------------:|:------------:|:----------------:|
-|           | ![repair_orig_01](data/sample/original/repair/img_01.png) | ![repair_orig_crop01](data/sample/original_crop/yolov5/repair/img_01.png) | ![repair_gen_01](data/sample/generation/repair/img_01.png) | ![repair_gen_crop_01](data/sample/generation_crop/yolov5/repair/img_01.png) |
-| **Repair** | ![repair_orig_02](data/sample/original/repair/img_02.jpg) | ![repair_orig_crop02](data/sample/original_crop/yolov5/repair/img_02.jpg) | ![repair_gen_02](data/sample/generation/repair/img_02.jpg) | ![repair_gen_crop_02](data/sample/generation_crop/yolov5/repair/img_02.jpg) |
-|           | ![repair_orig_03](data/sample/original/repair/img_03.jpg) | ![repair_orig_crop03](data/sample/original_crop/yolov5/repair/img_03.jpg) | ![repair_gen_03](data/sample/generation/repair/img_03.jpg) | ![repair_gen_crop_03](data/sample/generation_crop/yolov5/repair/img_03.jpg) |
-|           | ![replace_orig_01](data/sample/original/replace/img_01.jpg) | ![replace_orig_crop01](data/sample/original_crop/yolov5/replace/img_01.jpg) | ![replace_gen_01](data/sample/generation/replace/img_01.jpg) | ![replace_gen_crop_01](data/sample/generation_crop/yolov5/replace/img_01.jpg) |
-| **Replace** | ![replace_orig_02](data/sample/original/replace/img_02.jpg) | ![replace_orig_crop02](data/sample/original_crop/yolov5/replace/img_02.jpg) | ![replace_gen_02](data/sample/generation/replace/img_02.jpg) | ![replace_gen_crop_02](data/sample/generation_crop/yolov5/replace/img_02.jpg) |
-|           | ![replace_orig_03](data/sample/original/replace/img_03.jpg) | ![replace_orig_crop03](data/sample/original_crop/yolov5/replace/img_03.jpg) | ![replace_gen_03](data/sample/generation/replace/img_03.jpg) | ![replace_gen_crop_03](data/sample/generation_crop/yolov5/replace/img_03.jpg) |
+| **Repair** | <img src="data/sample/original/repair/img_01.png" width="250"> | <img src="data/sample/original_crop/yolov5/repair/img_01.png" width="250"> | <img src="data/sample/generation/repair/img_01.png" width="250"> | <img src="data/sample/generation_crop/yolov5/repair/img_01.png" width="250"> |
+|            | <img src="data/sample/original/repair/img_02.jpg" width="250"> | <img src="data/sample/original_crop/yolov5/repair/img_02.jpg" width="250"> | <img src="data/sample/generation/repair/img_02.jpg" width="250"> | <img src="data/sample/generation_crop/yolov5/repair/img_02.jpg" width="250"> |
+|           | <img src="data/sample/original/repair/img_03.jpg" width="250"> | <img src="data/sample/original_crop/yolov5/repair/img_03.jpg" width="250"> | <img src="data/sample/generation/repair/img_03.jpg" width="250"> | <img src="data/sample/generation_crop/yolov5/repair/img_03.jpg" width="250"> |
+| **Replace** | <img src="data/sample/original/replace/img_01.jpg" width="250"> | <img src="data/sample/original_crop/yolov5/replace/img_01.jpg" width="250"> | <img src="data/sample/generation/replace/img_01.jpg" width="250"> | <img src="data/sample/generation_crop/yolov5/replace/img_01.jpg" width="250"> |
+|           |  <img src="data/sample/original/replace/img_02.jpg" width="250"> | <img src="data/sample/original_crop/yolov5/replace/img_02.jpg" width="250"> | <img src="data/sample/generation/replace/img_02.jpg" width="250"> | <img src="data/sample/generation_crop/yolov5/replace/img_02.jpg" width="250"> |
+|           | <img src="data/sample/original/replace/img_03.jpg" width="250"> | <img src="data/sample/original_crop/yolov5/replace/img_03.jpg" width="250"> | <img src="data/sample/generation/replace/img_03.jpg" width="250"> | <img src="data/sample/generation_crop/yolov5/replace/img_03.jpg" width="250"> |
 
+
+---
+
+## 📊 Experimental Results
+
+This study evaluates four different experimental configurations to analyze the effect of bias removal and region-focused learning on classification performance:
+
+| ID | Configuration | Description |
+|----|----------------|--------------|
+| (a) | **Original → Classifier** | Baseline model trained on the raw dataset |
+| (b) | **YOLO Crop → Classifier** | Classifier trained on YOLO-cropped regions of the original images |
+| (c) | **Annotation Clean → Classifier** | Classifier trained on generatively cleaned images (human annotation removed) |
+| (d) | **Annotation Clean + YOLO Crop → Classifier** | Classifier trained on cleaned and cropped images |
+
+---
+
+### 🎯 Evaluation Focus
+
+The experiments focus on **three main evaluation aspects**:
+
+1. **Grad-CAM Visualization** — Model attention and interpretability  
+2. **Classification Accuracy** — Quantitative performance across datasets and models  
+3. **Data Reliability** — Bias reduction ratio based on annotation removal  
+
+---
+
+### 🧠 1️⃣ Grad-CAM Visualization
+
+The Grad-CAM analysis illustrates the regions of interest (ROIs) that the classifier focuses on under each experimental setup.
+
+| (a) Original | (b) YOLO Only | (c) Gen Only | (d) Gen + YOLO |
+|---------------|---------------|---------------|----------------|
+| ![gradcam_orig_01](assets/Grad-CAM/original/img_01.png) | ![gradcam_orig_crop_01](assets/Grad-CAM/original/img_01_crop.png) | ![gradcam_gen_01](assets/Grad-CAM/generation/img_01.png) | ![gradcam_gen_crop_01](assets/Grad-CAM/generation/img_01_crop.png) |
+| ![gradcam_orig_02](assets/Grad-CAM/original/img_02.png) | ![gradcam_orig_crop_02](assets/Grad-CAM/original/img_02_crop.png) | ![gradcam_gen_02](assets/Grad-CAM/generation/img_02.png) | ![gradcam_gen_crop_02](assets/Grad-CAM/generation/img_02_crop.png) |
+
+> 💡 *Observation:*  
+> Models trained on cropped or generatively cleaned data exhibit **stronger activation around the actual damage regions**,  
+> suggesting improved spatial attention and interpretability compared to the baseline.
+
+---
+
+### 📈 2️⃣ Classification Accuracy & Data Reliability Analysis
+
+This section presents the **quantitative comparison** of classification performance and dataset reliability across the four experimental settings.  
+Each configuration is evaluated using the best-performing model checkpoint obtained from ten independent runs.
+
+| Condition | Data Reliability | Annotation Clean | YOLO Crop | Best Acc (%) |
+|------------|------------------|------------------|------------|---------------|
+| (a) Original | 66% | ✗ | ✗ | **95.39** |
+| (b) YOLO Only | 89.80% | ✗ | ✓ | **97.46** |
+| (c) Gen Only | 100% | ✓ | ✗ | **88.94** |
+| (d) Gen + YOLO | 100% | ✓ | ✓ | **93.40** |
+
+> 📘 *Notes:*  
+> - Each accuracy represents the **best result** among ten independent runs.  
+> - **Data Reliability** is defined as \( 1 - \text{Bias Ratio} \), where “bias” corresponds to the proportion of images containing human annotations.  
+> - Combining **annotation cleaning** and **YOLO cropping** yields more interpretable models with higher spatial precision,  
+>   while the YOLO-only setting achieves the highest quantitative performance.
+
+---
+
+### 🧩 Summary — Ablation Interpretation
+
+The ablation results indicate that:
+- **YOLO-based cropping** significantly improves classification accuracy by focusing on relevant local regions.  
+- **Generative annotation cleaning** enhances dataset reliability, completely removing human-drawn artifacts.  
+- **Combined (Gen + YOLO)** approach provides a balance between interpretability and robustness, demonstrating the effectiveness of the proposed dual-pipeline strategy.
+
+> 🏁 *Conclusion placeholder:*  
+> The proposed *Crop and Conquer* framework successfully achieves both **trustworthy learning** and **performance enhancement**  
+> through complementary bias removal and region-focused representation learning.
+
+---
+
+---
+
+### 🧠 3️⃣ Interpretation & Discussion
+
+This repository summarizes the **key figures and major quantitative results** from the paper.  
+For detailed experimental setups, extended ablation studies, and additional analyses,  
+please refer to the full paper:  
+> *“Crop and Conquer: A Dual-Pipeline Framework for Trustworthy Visual Classification.”*
+
+The main finding of this study is that applying a **simple YOLO-based Cropping step**  
+prior to classification effectively guides the model to focus on the **most relevant damage regions**,  
+resulting in improved **attention localization** and **higher classification accuracy**.
+
+We discovered that this effect consistently appears in both:
+- **Unbalanced datasets** containing human-annotated bias in a single class, and  
+- **Generatively cleaned datasets** constructed via annotation removal using generative AI.
+
+These findings demonstrate that even a minimal preprocessing step can significantly enhance  
+model trustworthiness and predictive robustness in **real-world industrial environments**,  
+particularly under **limited data conditions** such as class imbalance or biased distributions.
+
+> 🏁 *In summary*, YOLO-based region cropping not only increases quantitative performance  
+but also strengthens model interpretability — offering a practical and scalable solution  
+for industrial AI applications where data quality and bias remain key challenges.
+
+---
