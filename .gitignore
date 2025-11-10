@@ -260,3 +260,4 @@ vcpkg/
 data/*
 !data/sample/
 !data/sample/**
+!requirements.txt
