@@ -112,17 +112,6 @@ However, you can customize input paths in utils/config.yaml to apply the impleme
 python src/main.py --annot_clean on
 ```
 
-## ⚠️ Note on Data Privacy
-The dataset used in this study is private and cannot be distributed publicly.
-Therefore, only a small sample dataset is provided under:
-
-```bash
-data/sample/
-```
-
-- The sample data allows you to test the annotation cleaning and cropping functionalities.
-- Training and evaluation are disabled by default to prevent runtime errors due to missing private data.
-
 ### 🧭 Project Overview
 
 - Main entry point: src/main.py
@@ -136,8 +125,16 @@ data/sample/
 - Model checkpoints: saved under checkpoints/ and saved_model/
 
 
-📄 For citation, experimental details, and additional documentation, please refer to the paper:
-“Crop and Conquer: A Dual-Pipeline Framework for Trustworthy Visual Classification” (Hwang, K., Suwon University).
+## ⚠️ Note on Data Privacy
+The dataset used in this study is private and cannot be distributed publicly.
+Therefore, only a small sample dataset is provided under:
+
+```bash
+data/sample/
+```
+
+- The sample data allows you to test the annotation cleaning and cropping functionalities.
+- Training and evaluation are disabled by default to prevent runtime errors due to missing private data.
 
 ---
 
@@ -153,7 +150,7 @@ data/sample/
 |:---------:|:---------:|:--------------:|:------------:|:----------------:|
 | **Repair** | <img src="data/sample/original/repair/img_01.png" width="250"> | <img src="data/sample/original_crop/yolov5/repair/img_01.png" width="250"> | <img src="data/sample/generation/repair/img_01.png" width="250"> | <img src="data/sample/generation_crop/yolov5/repair/img_01.png" width="250"> |
 |            | <img src="data/sample/original/repair/img_02.jpg" width="250"> | <img src="data/sample/original_crop/yolov5/repair/img_02.jpg" width="250"> | <img src="data/sample/generation/repair/img_02.jpg" width="250"> | <img src="data/sample/generation_crop/yolov5/repair/img_02.jpg" width="250"> |
-|           | <img src="data/sample/original/repair/img_03.jpg" width="250"> | <img src="data/sample/original_crop/yolov5/repair/img_03.jpg" width="250"> | <img src="data/sample/generation/repair/img_03.jpg" width="250"> | <img src="data/sample/generation_crop/yolov5/repair/img_03.jpg" width="250"> |
+|           | <img src="data/sample/original/repair/img_03.png" width="250"> | <img src="data/sample/original_crop/yolov5/repair/img_03.png" width="250"> | <img src="data/sample/generation/repair/img_03.png" width="250"> | <img src="data/sample/generation_crop/yolov5/repair/img_03.png" width="250"> |
 | **Replace** | <img src="data/sample/original/replace/img_01.jpg" width="250"> | <img src="data/sample/original_crop/yolov5/replace/img_01.jpg" width="250"> | <img src="data/sample/generation/replace/img_01.jpg" width="250"> | <img src="data/sample/generation_crop/yolov5/replace/img_01.jpg" width="250"> |
 |           |  <img src="data/sample/original/replace/img_02.jpg" width="250"> | <img src="data/sample/original_crop/yolov5/replace/img_02.jpg" width="250"> | <img src="data/sample/generation/replace/img_02.jpg" width="250"> | <img src="data/sample/generation_crop/yolov5/replace/img_02.jpg" width="250"> |
 |           | <img src="data/sample/original/replace/img_03.jpg" width="250"> | <img src="data/sample/original_crop/yolov5/replace/img_03.jpg" width="250"> | <img src="data/sample/generation/replace/img_03.jpg" width="250"> | <img src="data/sample/generation_crop/yolov5/replace/img_03.jpg" width="250"> |
@@ -204,4 +201,8 @@ allowing the model to focus more precisely on the true damage areas during learn
 > - Combining **annotation cleaning** and **YOLO cropping** yields more interpretable models with higher spatial precision,  
 > - Although Generative AI–based annotation cleaning completely removes human markings (reaching 100% data reliability),
 this process is non-reproducible and occasionally alters the damage patterns, indicating a need for further research.
+
 ---
+
+📄 For citation, experimental details, and additional documentation, please refer to the paper:
+“Crop and Conquer: A Dual-Pipeline Framework for Trustworthy Visual Classification” (Hwang, K., Suwon University).
