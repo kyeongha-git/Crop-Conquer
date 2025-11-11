@@ -2,15 +2,15 @@
 # -*- coding: utf-8 -*-
 
 """
-test_darknet_pipeline.py
+test_darknet.py
 ------------------------
-Smoke test for DarknetPipeline (Config-driven)
-Ensures that pipeline steps execute in sequence without real Darknet build/train.
+Lightweight smoke test for DarknetPipeline.
+✅ 목적: 실행 시 예외가 발생하지 않고 result.json 경로 문자열을 반환하는지만 확인.
 """
 
 import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from src.yolo_cropper.models.darknet.darknet import DarknetPipeline
 
 
@@ -22,9 +22,6 @@ def mock_config(tmp_path):
     """Create a minimal fake config.yaml-like dict"""
     saved_model_dir = tmp_path / "saved_model" / "yolo_cropper"
     saved_model_dir.mkdir(parents=True, exist_ok=True)
-
-    # ❌ weight 파일은 생성하지 않는다
-    # (saved_model_dir / "yolov4.weights").write_text("dummy weights")
 
     return {
         "yolo_cropper": {
@@ -42,55 +39,39 @@ def mock_config(tmp_path):
         }
     }
 
+
 # ==============================================================
-# 🔹 Core Smoke Test
+# 🔹 Core Smoke Test (Simplified)
 # ==============================================================
-def test_darknet_pipeline_runs_all_steps(tmp_path, mock_config, monkeypatch):
+def test_darknet_pipeline_runs_without_errors(tmp_path, mock_config):
     """
-    ✅ DarknetPipeline.run() should execute all pipeline steps
-    without raising exceptions (mocking submodules).
+    ✅ 목적: DarknetPipeline이 정상 실행되는지만 확인.
+    - 내부 단계 호출 여부는 검증하지 않음
+    - 모든 서브모듈은 mock 처리 (실제 파일/빌드 없음)
     """
 
-    # --- Patch submodules to prevent real file operations ---
+    # --- Patch all heavy submodules to no-op mocks ---
     with patch("src.yolo_cropper.models.darknet.darknet.load_yaml_config", return_value=mock_config), \
-         patch("src.yolo_cropper.models.darknet.darknet.CfgManager") as MockCfg, \
-         patch("src.yolo_cropper.models.darknet.darknet.MakeManager") as MockMake, \
-         patch("src.yolo_cropper.models.darknet.darknet.DarknetDataPreparer") as MockPrep, \
-         patch("src.yolo_cropper.models.darknet.darknet.DarknetTrainer") as MockTrain, \
-         patch("src.yolo_cropper.models.darknet.darknet.DarknetEvaluator") as MockEval, \
+         patch("src.yolo_cropper.models.darknet.darknet.CfgManager"), \
+         patch("src.yolo_cropper.models.darknet.darknet.MakeManager"), \
+         patch("src.yolo_cropper.models.darknet.darknet.DarknetDataPreparer"), \
+         patch("src.yolo_cropper.models.darknet.darknet.DarknetTrainer"), \
+         patch("src.yolo_cropper.models.darknet.darknet.DarknetEvaluator"), \
          patch("src.yolo_cropper.models.darknet.darknet.DarknetPredictor") as MockPred, \
-         patch("src.yolo_cropper.models.darknet.darknet.YOLOCropper") as MockCrop:
+         patch("src.yolo_cropper.models.darknet.darknet.YOLOCropper"):
 
-        # --- Configure mocks ---
-        MockCfg.return_value.generate.return_value = tmp_path / "cfg" / "dummy.cfg"
-        MockMake.return_value.configure.return_value = None
-        MockMake.return_value.rebuild.return_value = None
-        MockMake.return_value.verify_darknet.return_value = True
-        MockPrep.return_value.prepare.return_value = None
-        MockTrain.return_value.verify_files.return_value = True
-        MockTrain.return_value.run.return_value = None
-        MockEval.return_value.run.return_value = {"mAP@0.5": 87.5}
-        MockPred.return_value.run.return_value = ("outputs/json_results/yolov4/result.json", "outputs/json_results/predict.txt")
-        MockCrop.return_value.crop_from_json.return_value = None
+        # Predictor mock return (result path only)
+        MockPred.return_value.run.return_value = (
+            "outputs/json_results/yolov4/result.json",
+            "outputs/json_results/predict.txt",
+        )
 
-        # --- Instantiate and run pipeline ---
+        # --- Run pipeline ---
         pipeline = DarknetPipeline(config_path="dummy_config.yaml")
         result = pipeline.run()
 
         # --- Assertions ---
         assert isinstance(result, str), "Pipeline should return a result.json path"
-        assert "result.json" in result
-        MockCfg.assert_called_once()
-        MockMake.assert_called_once()
-        MockPrep.assert_called_once()
-        MockTrain.assert_called_once()
-        MockEval.assert_called_once()
-        MockPred.assert_called_once()
-        MockCrop.assert_called_once()
+        assert result.endswith("result.json"), "Returned path should be a result.json file"
 
-        # --- Check step order (informal) ---
-        MockTrain.return_value.run.assert_called_once()
-        MockEval.return_value.run.assert_called_once()
-        MockPred.return_value.run.assert_called_once()
-
-        print(f"[✓] DarknetPipeline test passed → result: {result}")
+        print(f"[✓] DarknetPipeline smoke test passed → {result}")

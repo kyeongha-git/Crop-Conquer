@@ -49,7 +49,7 @@ class Classifier:
         self.config_path = Path(config_path)
         self.cfg_all = load_yaml_config(self.config_path)
 
-        if "Classifier" not in self.cfg_all:
+        if "classifier" not in self.cfg_all:
             raise KeyError("❌ Config 파일에 'Classifier' 섹션이 없습니다.")
         self.cfg = self.cfg_all["classifier"]
 
