@@ -1,49 +1,49 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-from pathlib import Path
-import pytest
-import tempfile
-from PIL import Image, ImageChops
-import numpy as np
-import pytest
-import random
-
-from src.data_augmentor.core.augment_dataset import (
-    list_images,
-    clamp,
-    random_resized_crop,
-    random_hflip,
-    random_rotate,
-    random_translate,
-    color_jitter,
-    augment_pipeline,
-    balance_augmentation,
-)
-from src.data_augmentor.core.split_dataset import split_dataset
-
-
 """
-test_split_dataset.py
+test_data_processing.py
 ----------------------
-Unit tests for `split_dataset.py`.
+Unit and integration tests for the dataset splitting and augmentation modules.
+
+Modules tested:
+- src.data_augmentor.core.split_dataset
+- src.data_augmentor.core.augment_dataset
 
 Test Goals:
-- Verify dataset is split into train/valid/test with correct ratios
-- Ensure folder structure (train/valid/test per class) is created
-- Confirm image files are correctly copied
+✅ Verify correct split ratios and folder structures for train/valid/test sets
+✅ Ensure deterministic behavior given fixed random seeds
+✅ Confirm graceful handling of empty or invalid class folders
+✅ Validate correctness of augmentation primitives and pipelines
 """
+
+import random
+import tempfile
+from pathlib import Path
+
+import numpy as np
+import pytest
+from PIL import Image, ImageChops
+
+from src.data_augmentor.core.augment_dataset import (augment_pipeline,
+                                                     balance_augmentation,
+                                                     clamp, color_jitter,
+                                                     list_images, random_hflip,
+                                                     random_resized_crop,
+                                                     random_rotate,
+                                                     random_translate)
+from src.data_augmentor.core.split_dataset import split_dataset
+
+# ============================================================
+# Fixtures for Split Dataset Tests
+# ============================================================
+
 
 @pytest.fixture
 def dummy_dataset(tmp_path):
     """
-    Create a dummy dataset for testing.
-    Structure:
-        tmp_path/
-            repair/
-                img_0.jpg ... img_9.jpg
-            replace/
-                img_0.jpg ... img_9.jpg
+    Create a dummy dataset containing 'repair' and 'replace' folders
+    with 10 text-based fake images each.
     """
     base = tmp_path
     for cls in ["repair", "replace"]:
@@ -56,12 +56,20 @@ def dummy_dataset(tmp_path):
 
 @pytest.fixture
 def dummy_split_config():
-    """Return a simple split configuration"""
+    """Return a simple split ratio configuration for dataset splitting."""
     return {"train_ratio": 0.6, "valid_ratio": 0.2, "test_ratio": 0.2}
 
 
+# ============================================================
+# Split Dataset Unit Tests
+# ============================================================
+
+
 def test_split_dataset_creates_splits(dummy_dataset, dummy_split_config, tmp_path):
-    """Check if split folders are correctly created and match expected counts"""
+    """
+    Ensure split_dataset() creates proper train/valid/test folders,
+    and each class has the expected number of samples.
+    """
     output_dir = tmp_path / "output"
     output_dir.mkdir()
 
@@ -72,38 +80,49 @@ def test_split_dataset_creates_splits(dummy_dataset, dummy_split_config, tmp_pat
         seed=42,
     )
 
-    # 각 split/class 폴더 존재 확인
+    # Verify class folders exist for each split
     for split in ["train", "valid", "test"]:
         for cls in ["repair", "replace"]:
             target_dir = output_dir / split / cls
             assert target_dir.exists(), f"Missing folder: {target_dir}"
 
-    # --- 실제 개수 계산 ---
+    # Count number of images per split
     def count_images(split):
-        return sum(len(list((output_dir / split / cls).glob("*.jpg"))) for cls in ["repair", "replace"])
+        return sum(
+            len(list((output_dir / split / cls).glob("*.jpg")))
+            for cls in ["repair", "replace"]
+        )
 
-    total_imgs = sum(len(list((dummy_dataset / cls).glob("*.jpg"))) for cls in ["repair", "replace"])
+    total_imgs = sum(
+        len(list((dummy_dataset / cls).glob("*.jpg"))) for cls in ["repair", "replace"]
+    )
     train_imgs = count_images("train")
     valid_imgs = count_images("valid")
     test_imgs = count_images("test")
 
-    # --- 기대값 계산 (비율 × 총합) ---
     expected_train = int(total_imgs * dummy_split_config["train_ratio"])
     expected_valid = int(total_imgs * dummy_split_config["valid_ratio"])
-    expected_test = total_imgs - expected_train - expected_valid  # rounding 보정
+    expected_test = total_imgs - expected_train - expected_valid
 
-    # --- 정량 비교 ---
-    assert train_imgs == expected_train, f"Train split mismatch: {train_imgs} vs {expected_train}"
-    assert valid_imgs == expected_valid, f"Valid split mismatch: {valid_imgs} vs {expected_valid}"
-    assert test_imgs == expected_test, f"Test split mismatch: {test_imgs} vs {expected_test}"
+    # Quantitative comparison
+    assert (
+        train_imgs == expected_train
+    ), f"Train split mismatch: {train_imgs} vs {expected_train}"
+    assert (
+        valid_imgs == expected_valid
+    ), f"Valid split mismatch: {valid_imgs} vs {expected_valid}"
+    assert (
+        test_imgs == expected_test
+    ), f"Test split mismatch: {test_imgs} vs {expected_test}"
 
-    # 전체 합 검증
+    # Total consistency check
     assert total_imgs == train_imgs + valid_imgs + test_imgs, "Split total mismatch"
 
 
-
 def test_split_dataset_reproducibility(dummy_dataset, dummy_split_config, tmp_path):
-    """Ensure deterministic splitting with fixed seed"""
+    """
+    Verify that dataset splitting is deterministic when using the same random seed.
+    """
     output_1 = tmp_path / "out1"
     output_2 = tmp_path / "out2"
 
@@ -113,53 +132,54 @@ def test_split_dataset_reproducibility(dummy_dataset, dummy_split_config, tmp_pa
     train_1 = sorted((output_1 / "train" / "repair").iterdir())
     train_2 = sorted((output_2 / "train" / "repair").iterdir())
 
-    # same seed → identical results
     assert [p.name for p in train_1] == [p.name for p in train_2]
 
 
 def test_split_dataset_empty_class(tmp_path, dummy_split_config, caplog):
-    """Handle empty class folder gracefully (warning, not crash)"""
+    """Ensure split_dataset() handles empty class folders or missing images gracefully."""
     empty_class_dir = tmp_path / "repair"
     empty_class_dir.mkdir()
     (tmp_path / "replace").mkdir()
 
     split_dataset(tmp_path, tmp_path / "output", dummy_split_config, seed=1)
-    assert "이미지가 없습니다" in caplog.text or "No class folders" in caplog.text
+
+    # Match exact log messages from current split_dataset.py
+    assert any(
+        phrase in caplog.text
+        for phrase in [
+            "No images found",  # when class folder exists but empty
+            "No class folders found",  # when no subfolders exist at all
+        ]
+    ), f"Expected warning log not found. Got:\n{caplog.text}"
 
 
 def test_split_dataset_invalid_ratios(dummy_dataset, tmp_path):
-    """Invalid ratios should raise AssertionError"""
+    """
+    Ensure invalid ratio configurations raise an AssertionError.
+    """
     bad_cfg = {"train_ratio": 0.5, "valid_ratio": 0.5, "test_ratio": 0.2}
     with pytest.raises(AssertionError):
         split_dataset(dummy_dataset, tmp_path / "out", bad_cfg)
 
 
-"""
-test_augment_dataset.py
------------------------
-Unit & Integration tests for `augment_dataset.py`.
-
-Test Goals:
-- ✅ Verify augmentation primitives (crop, flip, rotate, translate, color jitter) work as intended
-- ✅ Ensure augment_pipeline() combines all transformations without error
-- ✅ Validate balance_augmentation() correctly detects class imbalance and performs upsampling
-- ✅ Confirm utility functions (list_images, clamp) behave correctly
-- 🧩 Check reproducibility and output validity for randomized operations
-"""
-
 # ============================================================
-# Fixtures & Utilities
+# Augmentation Tests
 # ============================================================
+
 
 @pytest.fixture
 def temp_dir():
+    """Create a temporary directory fixture for augmentation tests."""
     with tempfile.TemporaryDirectory() as tmpdir:
         yield Path(tmpdir)
 
 
 @pytest.fixture
 def sample_image(temp_dir):
-    """좌우 색상 그라디언트가 있는 테스트용 비대칭 이미지"""
+    """
+    Create a small 64×64 RGB gradient image for augmentation tests.
+    Produces a left-to-right asymmetric color pattern for visual difference.
+    """
     img_path = temp_dir / "sample.jpg"
     img = Image.new("RGB", (64, 64))
     for x in range(64):
@@ -170,24 +190,40 @@ def sample_image(temp_dir):
     return img_path
 
 
+# ============================================================
+# Helper Utilities
+# ============================================================
+
+
 def _img_to_array(img: Image.Image) -> np.ndarray:
+    """Convert a PIL Image to a NumPy array."""
     return np.asarray(img, dtype=np.uint8).copy()
 
 
 def _images_different(img1: Image.Image, img2: Image.Image) -> bool:
+    """Return True if two images differ (using bounding box of pixel difference)."""
     diff = ImageChops.difference(img1, img2)
     return diff.getbbox() is not None
 
 
 def count_images_in_dir(directory: Path) -> int:
-    return len([f for f in directory.glob("*") if f.suffix.lower() in [".jpg", ".png", ".jpeg"]])
+    """Count image files (jpg/png/jpeg) in the given directory."""
+    return len(
+        [
+            f
+            for f in directory.glob("*")
+            if f.suffix.lower() in [".jpg", ".png", ".jpeg"]
+        ]
+    )
 
 
 # ============================================================
-# Unit Tests: Utility Functions
+# Unit Tests — Augmentation Primitives
 # ============================================================
+
 
 def test_list_images_filters_correctly(temp_dir):
+    """Ensure list_images() returns only image files with correct extensions."""
     (temp_dir / "a.jpg").touch()
     (temp_dir / "b.png").touch()
     (temp_dir / "c.txt").touch()
@@ -197,16 +233,14 @@ def test_list_images_filters_correctly(temp_dir):
 
 
 def test_clamp_behaves_correctly():
+    """Verify clamp() properly restricts values within [min, max]."""
     assert clamp(5, 0, 10) == 5
     assert clamp(-5, 0, 10) == 0
     assert clamp(50, 0, 10) == 10
 
 
-# ============================================================
-# Unit Tests: Augmentation Primitives
-# ============================================================
-
 def test_random_resized_crop_changes_composition(sample_image):
+    """Ensure random_resized_crop() modifies spatial composition while preserving size."""
     img = Image.open(sample_image)
     cropped = random_resized_crop(img)
     assert cropped.size == img.size
@@ -214,6 +248,7 @@ def test_random_resized_crop_changes_composition(sample_image):
 
 
 def test_random_hflip_flips_horizontally(sample_image):
+    """Ensure random_hflip() correctly mirrors the image horizontally when p=1.0."""
     img = Image.open(sample_image)
     arr = _img_to_array(img)
     arr[:, :32, :] = 0
@@ -223,6 +258,7 @@ def test_random_hflip_flips_horizontally(sample_image):
 
 
 def test_random_rotate_rotates_pixels(sample_image):
+    """Ensure random_rotate() changes pixel arrangement significantly."""
     img = Image.open(sample_image)
     arr_before = _img_to_array(img)
     rotated = random_rotate(img, max_deg=45)
@@ -231,6 +267,7 @@ def test_random_rotate_rotates_pixels(sample_image):
 
 
 def test_random_translate_shifts_image_content(sample_image):
+    """Ensure random_translate() shifts pixel content by a visible amount."""
     img = Image.open(sample_image)
     arr_before = _img_to_array(img)
     translated = random_translate(img, max_ratio=0.2)
@@ -239,23 +276,19 @@ def test_random_translate_shifts_image_content(sample_image):
 
 
 def test_color_jitter_modifies_pixel_values(sample_image):
+    """Ensure color_jitter() alters brightness/contrast/saturation statistics."""
     random.seed(42)
     np.random.seed(42)
-
     img = Image.open(sample_image)
     arr_before = _img_to_array(img)
     out = color_jitter(img)
     arr_after = _img_to_array(out)
-
     mean_diff = abs(arr_before.mean() - arr_after.mean())
-    assert mean_diff > 0.5, f"컬러 변화가 감지되지 않음 (Δmean={mean_diff:.3f})"
+    assert mean_diff > 0.5, f"Color jitter effect too small (Δmean={mean_diff:.3f})"
 
-
-# ============================================================
-# Integration: augment_pipeline
-# ============================================================
 
 def test_augment_pipeline_combines_all(sample_image):
+    """Verify augment_pipeline() executes a full augmentation chain successfully."""
     img = Image.open(sample_image)
     dummy_cfg = {
         "random_resized_crop": {"scale": [0.9, 1.0], "ratio": [0.95, 1.05]},
@@ -272,22 +305,22 @@ def test_augment_pipeline_combines_all(sample_image):
     assert result.size == img.size
 
 
-# ============================================================
-# Functional: balance_augmentation
-# ============================================================
-
 def test_balance_augmentation_balances_classes(temp_dir):
-    """balance_augmentation()이 더 적은 클래스를 감지해 균형 맞추는지 검증"""
+    """Ensure balance_augmentation() upsamples minority classes to achieve balance."""
     train_repair = temp_dir / "train" / "repair"
     train_replace = temp_dir / "train" / "replace"
     train_repair.mkdir(parents=True, exist_ok=True)
     train_replace.mkdir(parents=True, exist_ok=True)
 
-    # repair: 5장, replace: 2장
+    # repair: 5 images, replace: 2 images
     for i in range(5):
-        Image.new("RGB", (32, 32), (128, 128, 128)).save(train_repair / f"repair_{i}.jpg")
+        Image.new("RGB", (32, 32), (128, 128, 128)).save(
+            train_repair / f"repair_{i}.jpg"
+        )
     for i in range(2):
-        Image.new("RGB", (32, 32), (128, 128, 128)).save(train_replace / f"replace_{i}.jpg")
+        Image.new("RGB", (32, 32), (128, 128, 128)).save(
+            train_replace / f"replace_{i}.jpg"
+        )
 
     dummy_cfg = {"random_hflip_p": 1.0}
     balance_augmentation(root_dir=temp_dir, aug_cfg=dummy_cfg, seed=123)
@@ -298,7 +331,7 @@ def test_balance_augmentation_balances_classes(temp_dir):
 
 
 def test_balance_augmentation_handles_equal_case(temp_dir):
-    """이미 균형 상태이면 추가 증강이 발생하지 않아야 함"""
+    """Ensure no augmentation occurs if class distributions are already balanced."""
     train_repair = temp_dir / "train" / "repair"
     train_replace = temp_dir / "train" / "replace"
     train_repair.mkdir(parents=True, exist_ok=True)
@@ -313,5 +346,4 @@ def test_balance_augmentation_handles_equal_case(temp_dir):
     before = count_images_in_dir(train_repair)
     balance_augmentation(root_dir=temp_dir, aug_cfg=dummy_cfg, seed=42)
     after = count_images_in_dir(train_repair)
-
     assert before == after

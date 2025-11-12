@@ -1,32 +1,52 @@
-import re
-import csv
 import json
+import re
 from pathlib import Path
-import numpy as np
+
+
+"""
+metrics_parser.py
+-----------------
+This module reads and interprets YOLO or Darknet evaluation logs 
+to extract key performance metrics such as Precision, Recall, 
+and mAP@0.5.
+
+It supports multiple model formats (Darknet, YOLOv5, YOLOv8) 
+and automatically selects the right parser based on model name.
+
+In short, it provides a unified interface to analyze detection 
+performance results across different YOLO versions.
+"""
 
 
 def parse_darknet_eval_log(log_path: str):
     """
-    Parse Darknet evaluation log and extract metrics:
+    Parse a Darknet-style evaluation log and extract:
       - Precision
       - Recall
       - mAP@0.50
+
+    Works with Darknet, YOLOv2, and YOLOv4 output logs.
     """
     log_text = Path(log_path).read_text(errors="ignore")
 
     # ----------------------------
     # mean Average Precision (mAP@0.5)
     # ----------------------------
-    m = re.search(r"mean average precision.*?=\s*([0-9]*\.?[0-9]+)\s*%?", log_text, re.I)
+    m = re.search(
+        r"mean average precision.*?=\s*([0-9]*\.?[0-9]+)\s*%?", log_text, re.I
+    )
     mAP = float(m.group(1)) if m else None
-    mAP_pct = mAP if (mAP is not None and mAP > 1) else (None if mAP is None else mAP * 100)
+    mAP_pct = (
+        mAP if (mAP is not None and mAP > 1) else (None if mAP is None else mAP * 100)
+    )
 
     # ----------------------------
     # Precision / Recall
     # ----------------------------
     pr = re.search(
         r"for\s+conf_thresh\s*=?\s*[0-9]*\.?[0-9]+\s*[, ]+precision\s*[:=]\s*([0-9]*\.?[0-9]+)\s*[, ]+recall\s*[:=]\s*([0-9]*\.?[0-9]+)",
-        log_text, re.I,
+        log_text,
+        re.I,
     )
 
     if pr:
@@ -34,7 +54,9 @@ def parse_darknet_eval_log(log_path: str):
         recall = float(pr.group(2))
     else:
         # Fallback: TP/FP/FN 방식
-        tpfpfn = re.search(r"TP\s*=\s*(\d+).*?FP\s*=\s*(\d+).*?FN\s*=\s*(\d+)", log_text, re.I | re.S)
+        tpfpfn = re.search(
+            r"TP\s*=\s*(\d+).*?FP\s*=\s*(\d+).*?FN\s*=\s*(\d+)", log_text, re.I | re.S
+        )
         if tpfpfn:
             TP, FP, FN = map(int, tpfpfn.groups())
             precision = TP / (TP + FP) if (TP + FP) > 0 else 0.0
@@ -42,9 +64,6 @@ def parse_darknet_eval_log(log_path: str):
         else:
             precision = recall = None
 
-    # ----------------------------
-    # Return structured result
-    # ----------------------------
     return {
         "precision": precision,
         "recall": recall,
@@ -53,7 +72,9 @@ def parse_darknet_eval_log(log_path: str):
 
 
 def print_darknet_eval_summary(metrics: dict):
-    """Pretty print the metrics"""
+    """
+    Display Darknet evaluation results in a readable format.
+    """
     print("=== Overall Evaluation (IoU=0.50, 101-point, conf_thresh=0.25) ===")
     if metrics["precision"] is not None:
         print(f"Precision: {metrics['precision']:.4f}")
@@ -61,17 +82,20 @@ def print_darknet_eval_summary(metrics: dict):
         print(f"Recall   : {metrics['recall']:.4f}")
     if metrics["mAP@0.5"] is not None:
         print(f"mAP@0.50 : {metrics['mAP@0.5']:.2f}%")
-        
+
 
 def parse_yolov5_eval_log(log_path: str):
     """
-    Parse YOLOv5 val.py log to extract overall metrics (Precision, Recall, mAP@0.5).
-    Works with local (non-COCO) datasets.
+    Parse YOLOv5 validation logs to extract overall metrics:
+      - Precision
+      - Recall
+      - mAP@0.5
+
+    Compatible with standard `val.py` logs for local datasets.
     """
     text = Path(log_path).read_text(errors="ignore")
     match = re.search(
-        r"all\s+\d+\s+\d+\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)",
-        text
+        r"all\s+\d+\s+\d+\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)\s+([0-9.]+)", text
     )
 
     if not match:
@@ -88,13 +112,15 @@ def parse_yolov5_eval_log(log_path: str):
         "mAP@0.5": map50 * 100,  # convert to percentage
     }
 
-# ==========================================================
-# 🔹 YOLOv8 Parser (results.json)
-# ==========================================================
+
 def parse_yolov8_results(json_path: str):
     """
-    Parse YOLOv8 results.json (Ultralytics val.py export)
-    Typically includes keys: metrics.precision / recall / map50 / map
+    Parse YOLOv8 `results.json` (from Ultralytics val.py output).
+
+    Extracts main performance indicators:
+      - Precision
+      - Recall
+      - mAP@0.5
     """
     json_file = Path(json_path)
     if not json_file.exists():
@@ -112,15 +138,14 @@ def parse_yolov8_results(json_path: str):
     return {"precision": precision, "recall": recall, "mAP@0.5": map50}
 
 
-# ==========================================================
-# 🔹 Unified Parser Selector
-# ==========================================================
 def get_metrics_parser(model_name: str):
     """
-    Return the appropriate parsing function based on model name.
+    Automatically select the correct parsing function
+    based on the YOLO model version name.
+
     Example:
         parser = get_metrics_parser("yolov5")
-        metrics = parser("path/to/results.csv")
+        metrics = parser("path/to/eval_log.txt")
     """
     model_name = model_name.lower()
     if "darknet" in model_name or "yolov2" in model_name or "yolov4" in model_name:

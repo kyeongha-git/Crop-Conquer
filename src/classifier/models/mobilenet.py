@@ -5,16 +5,26 @@ import torchvision.models as models
 
 class MobileNetClassifier(nn.Module):
     """
-    Unified classifier for MobileNet V1, V2, and V3 (Large).
+    A unified MobileNet-based classifier supporting V2 and V3 architectures.
+
+    This model loads a pretrained MobileNet backbone (V2 or V3-Large) and
+    replaces the classification head with a lightweight custom layer.
+
+    Architecture:
+        - Backbone: MobileNetV2 or MobileNetV3-Large (ImageNet pretrained)
+        - Feature Extractor: frozen by default
+        - Head: Dropout → Linear(num_classes)
+        - Input:  (B, 3, H, W)
+        - Output: (B, num_classes)
 
     Args:
-        num_classes (int): number of output classes
-        dropout_p (float): dropout probability for classifier
-        model_type (str): 'mobilenet_v1', 'mobilenet_v2', or 'mobilenet_v3'
-        freeze_backbone (bool): whether to freeze pretrained weights
+        num_classes (int): Number of output classes. Default is 1.
+        dropout_p (float): Dropout probability for regularization. Default is 0.5.
+        model_type (str): One of ['mobilenet_v2', 'mobilenet_v3']. Default is 'mobilenet_v3'.
+        freeze_backbone (bool): Whether to freeze pretrained feature extractor. Default is True.
 
     Example:
-        model = MobileNetClassifier(num_classes=2, model_type='mobilenet_v3')
+        >>> model = MobileNetClassifier(num_classes=2, model_type="mobilenet_v3")
     """
 
     def __init__(
@@ -28,9 +38,11 @@ class MobileNetClassifier(nn.Module):
 
         self.model_type = model_type.lower()
 
-        # 1️⃣ Load pretrained backbone
+        # Load pretrained backbone
         if self.model_type == "mobilenet_v2":
-            self.backbone = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.IMAGENET1K_V1)
+            self.backbone = models.mobilenet_v2(
+                weights=models.MobileNet_V2_Weights.IMAGENET1K_V1
+            )
             in_features = self.backbone.last_channel
 
         elif self.model_type == "mobilenet_v3":
@@ -42,12 +54,12 @@ class MobileNetClassifier(nn.Module):
         else:
             raise ValueError(f"❌ Unsupported model type: {model_type}")
 
-        # 2️⃣ Freeze backbone if required
+        # Optionally freeze pretrained backbone
         if freeze_backbone:
             for param in self.backbone.parameters():
                 param.requires_grad = False
 
-        # 3️⃣ Replace classifier head
+        # Replace classification head
         self.backbone.classifier = nn.Sequential(
             nn.Dropout(p=dropout_p),
             nn.Linear(in_features, num_classes),
@@ -55,11 +67,12 @@ class MobileNetClassifier(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Forward pass through the MobileNet backbone and custom classifier.
+        Forward pass through the MobileNet backbone and custom classification head.
 
         Args:
-            x (torch.Tensor): input tensor of shape (B, 3, H, W)
+            x (torch.Tensor): Input image tensor of shape (B, 3, H, W).
+
         Returns:
-            torch.Tensor: output logits of shape (B, num_classes)
+            torch.Tensor: Output logits tensor of shape (B, num_classes).
         """
         return self.backbone(x)

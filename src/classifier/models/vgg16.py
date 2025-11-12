@@ -5,26 +5,30 @@ import torchvision.models as models
 
 class VGGClassifier(nn.Module):
     """
-    Custom classifier based on pretrained VGG16.
+    A lightweight classifier built on top of a pretrained VGG16 backbone.
 
-    - Backbone: VGG16 (ImageNet pretrained)
-    - Feature Extractor: frozen
-    - Input: (3, 360, 360)
-    - Flattened feature dim: 512 * 11 * 11
-    - Classifier: Linear → Dropout → Linear
+    Architecture:
+        - Backbone: VGG16 (ImageNet pretrained, frozen)
+        - Input: (3, 360, 360)
+        - Flattened feature size: 512 × 11 × 11
+        - Head: Linear(512*11*11 → 256) → Dropout → Linear(256 → num_classes)
+
+    Args:
+        num_classes (int): Number of output classes. Default is 1.
+        dropout_p (float): Dropout probability for regularization. Default is 0.5.
     """
 
     def __init__(self, num_classes: int = 1, dropout_p: float = 0.5):
         super().__init__()
 
-        # 1️⃣ Load pretrained VGG16 backbone
+        # Load pretrained VGG16 backbone (ImageNet)
         self.backbone = models.vgg16(weights=models.VGG16_Weights.IMAGENET1K_V1)
 
-        # Freeze convolutional feature extractor
+        # Freeze all convolutional layers to retain pretrained feature extraction
         for param in self.backbone.features.parameters():
             param.requires_grad = False
 
-        # 2️⃣ Define classifier head (structure fixed)
+        # Define classifier head
         input_dim_flatten = 512 * 11 * 11
         self.classifier = nn.Sequential(
             nn.Flatten(),
@@ -35,16 +39,17 @@ class VGGClassifier(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
-        Forward propagation through VGG16 feature extractor and custom classifier.
+        Forward pass through the frozen VGG16 backbone and the custom classifier.
 
         Args:
-            x (torch.Tensor): input tensor of shape (B, 3, 360, 360)
+            x (torch.Tensor): Input image tensor of shape (B, 3, 360, 360).
+
         Returns:
-            torch.Tensor: model output logits (B, num_classes)
+            torch.Tensor: Output logits of shape (B, num_classes).
         """
-        # Extract features using frozen VGG16 feature blocks
+        # Extract convolutional features
         features = self.backbone.features(x)
 
-        # Apply custom classifier head
+        # Pass through custom classification layers
         logits = self.classifier(features)
         return logits

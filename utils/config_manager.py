@@ -4,36 +4,60 @@
 """
 config_manager.py
 -----------------
-Dynamic Config Manager (with CLI overrides)
+Dynamic Config Manager (with CLI Overrides)
 
-💡 핵심 특징
-- main.input_dir 기준으로 전체 경로를 자동 갱신
-- annotation_clean이 'on'일 때만 annotation_cleaner 경로 갱신
-- yolo_crop, yolo_model에 따라 하위 모듈 입출력 경로 자동 수정
-- 'off' 상태인 모듈의 경로는 절대 건드리지 않음
+💡 Key Features
+---------------
+- Automatically updates all submodule paths relative to `main.input_dir`
+- Updates annotation_cleaner paths only when `annot_clean == "on"`
+- Dynamically sets YOLO input/output directories based on `yolo_crop` and `yolo_model`
+- Preserves existing paths for modules that are turned "off"
 """
 
-import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+import yaml
 
 
 class ConfigManager:
-    """Dynamic Config Manager that updates config.yaml paths safely."""
+    """
+    Dynamic Config Manager that safely updates YAML configurations.
+
+    This class centralizes all path and mode management logic for the pipeline.
+    It loads `config.yaml`, applies CLI overrides, and automatically adjusts
+    directory paths for downstream modules such as:
+    - AnnotationCleaner
+    - YOLOCropper
+    - DataAugmentor
+    - Classifier
+
+    """
 
     def __init__(self, config_path: str):
+        """
+        Initialize the ConfigManager and load the YAML file.
+
+        Args:
+            config_path (str): Path to the configuration YAML file.
+        """
         self.config_path = Path(config_path)
         self.cfg = self._load_yaml()
 
         main_cfg = self.cfg.get("main", {})
         self.base_dir = Path(main_cfg.get("input_dir", "data/original")).resolve()
-        self.test_mode = self.cfg.get("annotation_cleaner", {}).get("annotation_clean", {}).get("test_mode", "off")
+        self.test_mode = (
+            self.cfg.get("annotation_cleaner", {})
+            .get("annotation_clean", {})
+            .get("test_mode", "off")
+        )
         self.annot_clean = main_cfg.get("annot_clean", "on")
         self.yolo_crop = main_cfg.get("yolo_crop", "on")
         self.yolo_model = main_cfg.get("yolo_model", "yolov8s")
 
     # --------------------------------------------------------
     def _load_yaml(self) -> Dict[str, Any]:
+        """Load YAML configuration file."""
         with open(self.config_path, "r", encoding="utf-8") as f:
             return yaml.safe_load(f)
 
@@ -43,11 +67,15 @@ class ConfigManager:
         annot_clean: Optional[str] = None,
         yolo_crop: Optional[str] = None,
         yolo_model: Optional[str] = None,
-        test_mode: Optional[str] = None
+        test_mode: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Update paths dynamically based on given overrides."""
+        """
+        Dynamically update module paths and parameters based on CLI overrides.
 
-        # CLI override 반영
+        Returns:
+            Dict[str, Any]: Updated configuration dictionary ready for saving.
+        """
+        # Apply CLI overrides
         if annot_clean is not None:
             self.annot_clean = annot_clean
         if yolo_crop is not None:
@@ -57,33 +85,39 @@ class ConfigManager:
         if test_mode is not None:
             self.test_mode = test_mode
 
-        # base_dir 최신화
-        self.base_dir = Path(self.cfg.get("main", {}).get("input_dir", "data/original")).resolve()
+        # Refresh base_dir
+        self.base_dir = Path(
+            self.cfg.get("main", {}).get("input_dir", "data/original")
+        ).resolve()
 
-        # === Base paths ===
+        # === Base Paths ===
         base_root = self.base_dir.parent  # e.g., data/sample
         annot_root = base_root / "annotation_cleaner"
 
-        # === AnnotationCleaner 관련 하위 경로 ===
+        # === AnnotationCleaner Paths ===
         annot_only = annot_root / "only_annotation_image"
         annot_only_padded = annot_root / "only_annotation_image_padded"
         generated_padded = annot_root / "generated_image_padded"
         generated_final = annot_root / "generated_image"
-        
-         # === AnnotationCleaner Output Dir (on/off 따라 다르게 계산)
+
+        # === Determine Output Directory ===
         if self.annot_clean == "on":
             annot_output_dir = base_root / "generation"
         else:
-            annot_output_dir = self.base_dir  # 원본 그대로 사용
+            annot_output_dir = self.base_dir  # Use original images if cleaner is off
 
-        # === YOLO Cropper Output Dir ===
+        # === YOLO Cropper Output ===
         if self.yolo_crop == "on":
-            crop_output_dir = annot_output_dir.parent / f"{annot_output_dir.name}_crop" / self.yolo_model
+            crop_output_dir = (
+                annot_output_dir.parent
+                / f"{annot_output_dir.name}_crop"
+                / self.yolo_model
+            )
         else:
             crop_output_dir = annot_output_dir
 
         # ==================================================================
-        # 🧼 AnnotationCleaner (on일 때만 갱신)
+        # 🧼 AnnotationCleaner (update only when active)
         # ==================================================================
         if self.annot_clean == "on":
             annotation_cfg = self.cfg.get("annotation_cleaner", {})
@@ -111,7 +145,7 @@ class ConfigManager:
 
             self.cfg["annotation_cleaner"] = annotation_cfg
         else:
-            print("[⚪] AnnotationCleaner OFF → 기존 경로 유지")
+            print("[⚪] AnnotationCleaner OFF → Skipping path updates")
 
         # ==================================================================
         # 🔍 YOLO Cropper
@@ -138,7 +172,7 @@ class ConfigManager:
         classifier_cfg["data"]["input_dir"] = str(crop_output_dir)
 
         # ==================================================================
-        # 🧩 Main Config 갱신
+        # 🧩 Main Config Update
         # ==================================================================
         self.cfg["main"]["annot_clean"] = self.annot_clean
         self.cfg["main"]["yolo_crop"] = self.yolo_crop
@@ -151,32 +185,14 @@ class ConfigManager:
 
     # --------------------------------------------------------
     def save(self, output_path: Optional[str] = None):
-        """Save updated config to YAML file."""
+        """
+        Save the updated configuration to a YAML file.
+
+        Args:
+            output_path (Optional[str]): Optional custom output path.
+                Defaults to overwriting the original configuration file.
+        """
         target_path = Path(output_path or self.config_path)
         with open(target_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(self.cfg, f, sort_keys=False, allow_unicode=True)
         print(f"[✓] Updated config saved → {target_path}")
-
-
-# --------------------------------------------------------
-# ✅ CLI Debug Entry
-# --------------------------------------------------------
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Dynamic Config Manager CLI")
-    parser.add_argument("--config", type=str, default="utils/config.yaml")
-    parser.add_argument("--annot_clean", type=str, choices=["on", "off"], default=None)
-    parser.add_argument("--yolo_crop", type=str, choices=["on", "off"], default=None)
-    parser.add_argument("--yolo_model", type=str, default=None)
-    parser.add_argument("--test_mode", type=str, choices=["on", "off"], default=None)
-    args = parser.parse_args()
-
-    mgr = ConfigManager(args.config)
-    updated = mgr.update_paths(
-        annot_clean=args.annot_clean,
-        yolo_crop=args.yolo_crop,
-        yolo_model=args.yolo_model,
-        test_mode=args.test_mode,
-    )
-    mgr.save()

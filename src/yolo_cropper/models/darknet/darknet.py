@@ -4,8 +4,7 @@
 """
 darknet.py
 ----------
-DarknetPipeline (Config-driven)
-Unified YOLOv2 / YOLOv4 workflow manager.
+This module defines a unified Darknet-based YOLOv2/YOLOv4 pipeline.
 
 Steps:
 1️⃣ cfg_manager
@@ -22,23 +21,33 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[4]
 sys.path.append(str(ROOT_DIR))
 
+from src.yolo_cropper.core.cropper import YOLOCropper
+from src.yolo_cropper.models.darknet.evaluate import DarknetEvaluator
+from src.yolo_cropper.models.darknet.predict import DarknetPredictor
+from src.yolo_cropper.models.darknet.setup.cfg_manager import CfgManager
+from src.yolo_cropper.models.darknet.setup.data_prepare import \
+    DarknetDataPreparer
+from src.yolo_cropper.models.darknet.setup.make_manager import MakeManager
+from src.yolo_cropper.models.darknet.train import DarknetTrainer
 from utils.load_config import load_yaml_config
 from utils.logging import get_logger, setup_logging
 
-# === Darknet Submodules ===
-from src.yolo_cropper.models.darknet.setup.cfg_manager import CfgManager
-from src.yolo_cropper.models.darknet.setup.make_manager import MakeManager
-from src.yolo_cropper.models.darknet.setup.data_prepare import DarknetDataPreparer
-from src.yolo_cropper.models.darknet.train import DarknetTrainer
-from src.yolo_cropper.models.darknet.evaluate import DarknetEvaluator
-from src.yolo_cropper.models.darknet.predict import DarknetPredictor
-from src.yolo_cropper.core.cropper import YOLOCropper
-
 
 class DarknetPipeline:
-    """Unified Darknet-based YOLOv2/YOLOv4 training → evaluation → prediction pipeline."""
+    """
+    A unified workflow manager for Darknet-based YOLOv2/YOLOv4 training and inference.
+
+    It uses a single configuration file to drive the entire process.
+
+    """
 
     def __init__(self, config_path: str = "utils/config.yaml"):
+        """
+        Initialize the Darknet pipeline and load configuration parameters.
+
+        Args:
+            config_path (str): Path to the YAML configuration file.
+        """
         setup_logging("logs/yolo_cropper")
         self.logger = get_logger("yolo_cropper.DarknetPipeline")
 
@@ -56,9 +65,15 @@ class DarknetPipeline:
 
         # Paths
         self.model_name = self.main_cfg.get("model_name", "yolov4").lower()
-        self.darknet_dir = Path(self.darknet_cfg.get("darknet_dir", "third_party/darknet")).resolve()
-        self.saved_model_dir = Path(self.dataset_cfg.get("saved_model_dir", "saved_model/yolo_cropper")).resolve()
-        self.base_dataset_dir = Path(self.dataset_cfg.get("train_data_dir", "data/yolo_cropper")).resolve()
+        self.darknet_dir = Path(
+            self.darknet_cfg.get("darknet_dir", "third_party/darknet")
+        ).resolve()
+        self.saved_model_dir = Path(
+            self.dataset_cfg.get("saved_model_dir", "saved_model/yolo_cropper")
+        ).resolve()
+        self.base_dataset_dir = Path(
+            self.dataset_cfg.get("train_data_dir", "data/yolo_cropper")
+        ).resolve()
         self.train_dataset_dir = Path(
             f"{self.dataset_cfg.get('train_data_dir', 'data/yolo_cropper')}/{self.model_name}"
         ).resolve()
@@ -66,7 +81,6 @@ class DarknetPipeline:
 
         # Derived paths
         self.saved_weight_path = self.saved_model_dir / f"{self.model_name}.weights"
-
 
         # Logging info
         self.logger.info(f"Initialized DarknetPipeline ({self.model_name.upper()})")
@@ -109,7 +123,9 @@ class DarknetPipeline:
     def step_train(self):
         self.logger.info("[STEP 4] Starting Darknet training...")
         if self.saved_weight_path.exists():
-            self.logger.info(f"[SKIP] Found existing trained model → {self.saved_weight_path}")
+            self.logger.info(
+                f"[SKIP] Found existing trained model → {self.saved_weight_path}"
+            )
             return
         trainer = DarknetTrainer(config=self.cfg)
         if trainer.verify_files():
@@ -122,7 +138,9 @@ class DarknetPipeline:
         self.logger.info("[STEP 5] Evaluating trained model...")
         evaluator = DarknetEvaluator(config=self.cfg)
         metrics = evaluator.run()
-        self.logger.info(f"[✓] Evaluation complete → mAP@0.5 = {metrics.get('mAP@0.5', 0):.2f}%")
+        self.logger.info(
+            f"[✓] Evaluation complete → mAP@0.5 = {metrics.get('mAP@0.5', 0):.2f}%"
+        )
         return metrics
 
     # --------------------------------------------------------
@@ -134,16 +152,16 @@ class DarknetPipeline:
         result_json, predict_txt = predictor.run()
         self.logger.info(f"[✓] Prediction complete → {result_json}")
         return result_json, predict_txt
-    
+
     # --------------------------------------------------------
-    # Step 7 YOLO Crop
+    # Step 7️⃣ YOLO Crop
     # --------------------------------------------------------
     def step_cropping(self):
         self.logger.info("[STEP 6] Running YOLO Cropping...")
         cropper = YOLOCropper(config=self.cfg)
         cropper.crop_from_json()
-        
-        self.logger.info(f"[✓] Cropping complete")
+
+        self.logger.info("[✓] Cropping complete")
 
     # --------------------------------------------------------
     # Unified Runner
@@ -171,8 +189,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Darknet Unified Pipeline Runner")
-    parser.add_argument("--config", type=str, default="utils/config.yaml",
-                        help="Path to configuration YAML file")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="utils/config.yaml",
+        help="Path to configuration YAML file",
+    )
     args = parser.parse_args()
 
     pipeline = DarknetPipeline(config_path=args.config)

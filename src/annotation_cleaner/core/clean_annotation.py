@@ -4,23 +4,32 @@
 """
 clean_annotation.py
 -------------------
-Gemini API를 사용해 차량 유리 이미지의 마킹/비본질적 요소를 제거하고
-편향 없는(bias-free) 이미지를 생성하는 클래스 모듈.
+This module automatically removes drawn annotations or visual marks
+from car windshield images using the Gemini API.
 
-리팩토링 포인트:
-- config.yaml 직접 접근 ❌ → 상위 컨트롤러에서 주입받음
-- Logging 기반 구조
-- Class 단일 책임(SRP)
-- 테스트 및 재사용 용이
+Purpose:
+    - Clean annotated or marked images to create unbiased training data.
+    - Generate clear images suitable for machine learning or visual analysis.
+    - Support automated processing of multiple image categories.
+
+Usage Example:
+    >>> cleaner = CleanAnnotation(
+    ...     input_dir="data/original",
+    ...     output_dir="data/cleaned",
+    ...     model="gemini-1.5-pro",
+    ...     prompt="Remove any pen marks or drawn lines from this windshield image."
+    ... )
+    >>> cleaner.run()
 """
 
 import os
+import sys
 from io import BytesIO
 from pathlib import Path
 from typing import List, Optional
-from PIL import Image
+
 from google import genai
-import sys
+from PIL import Image
 
 ROOT_DIR = Path(__file__).resolve().parents[3]  # Research/
 sys.path.append(str(ROOT_DIR))
@@ -29,25 +38,41 @@ from utils.logging import get_logger, setup_logging
 
 
 # ============================================================
-# 🔐 Gemini Client 초기화 함수
+# 🔐 Gemini Client Initialization
 # ============================================================
 def get_gemini_client(api_key: Optional[str] = None) -> genai.Client:
-    """환경변수에서 Gemini API Key를 불러와 클라이언트 생성"""
+    """
+    Initialize and return a Gemini API client.
+
+    The client is used to send image and text prompts to the Gemini model
+    for image cleaning tasks.
+
+    Args:
+        api_key (Optional[str]): Gemini API key. If not provided,
+                                 retrieves from environment variable `GEMINI_API_KEY`.
+
+    Returns:
+        genai.Client: Authenticated Gemini client.
+
+    Raises:
+        EnvironmentError: If the API key is missing.
+        RuntimeError: If client creation fails.
+    """
     key = api_key or os.getenv("GEMINI_API_KEY")
     if not key:
-        raise EnvironmentError("❌ GEMINI_API_KEY 환경 변수가 설정되어 있지 않습니다.")
+        raise EnvironmentError("❌ GEMINI_API_KEY environment variable is not set.")
     try:
         return genai.Client(api_key=key)
     except Exception as e:
-        raise RuntimeError(f"❌ Gemini 클라이언트 초기화 실패: {e}")
+        raise RuntimeError(f"❌ Failed to initialize Gemini client: {e}")
 
 
 # ============================================================
-# 🧩 CleanAnnotation 클래스
+# 🧩 CleanAnnotation Class
 # ============================================================
 class CleanAnnotation:
     """
-    Gemini 기반 이미지 annotation 제거기
+    A class that removes visual annotations or guide marks from images using the Gemini API.
     """
 
     def __init__(
@@ -61,10 +86,22 @@ class CleanAnnotation:
         test_limit: int = 3,
         client: Optional[genai.Client] = None,
     ):
+        """
+        Initialize the cleaning module with paths, model configuration, and logging.
+
+        Args:
+            input_dir (str): Folder containing input images grouped by category.
+            output_dir (str): Folder where cleaned images will be saved.
+            model (str): Gemini model to use for image cleaning.
+            prompt (str): Instruction for how to remove annotations.
+            categories (Optional[List[str]]): List of category subfolders to process.
+            test_mode (bool): If True, limits processing for debugging or preview.
+            test_limit (int): Number of images to process in test mode.
+            client (Optional[genai.Client]): Existing Gemini client, if already initialized.
+        """
         setup_logging("logs/annotation_cleaner")
         self.logger = get_logger("CleanAnnotation")
 
-        # 기본 설정
         self.input_root = Path(input_dir)
         self.output_root = Path(output_dir)
         self.categories = categories or ["repair", "replace"]
@@ -73,18 +110,19 @@ class CleanAnnotation:
         self.test_mode = test_mode
         self.test_limit = test_limit
 
-        # Gemini 클라이언트
         self.client = client or get_gemini_client()
 
-        self.logger.info(f"📂 입력 경로: {self.input_root}")
-        self.logger.info(f"💾 출력 경로: {self.output_root}")
-        self.logger.info(f"🧩 모델: {self.model}")
+        self.logger.info(f"📂 Input directory: {self.input_root}")
+        self.logger.info(f"💾 Output directory: {self.output_root}")
+        self.logger.info(f"🧩 Model: {self.model}")
 
     # ============================================================
-    # 🔧 내부 유틸
+    # 🔧 Internal Utility
     # ============================================================
     def _generate_clean_image(self, image_path: Path, output_path: Path) -> bool:
-        """Gemini API를 사용해 단일 이미지에서 annotation 제거"""
+        """
+        Send an image to the Gemini model and save the cleaned output.
+        """
         try:
             image = Image.open(image_path)
             response = self.client.models.generate_content(
@@ -92,19 +130,20 @@ class CleanAnnotation:
                 contents=[self.prompt, image],
             )
 
-            # 이미지 응답 처리
             for part in response.candidates[0].content.parts:
                 if getattr(part, "inline_data", None):
                     gen_img = Image.open(BytesIO(part.inline_data.data))
                     gen_img.save(output_path)
-                    self.logger.info(f"✅ 저장 완료: {output_path.name}")
+                    self.logger.info(f"✅ Saved cleaned image: {output_path.name}")
                     return True
                 elif getattr(part, "text", None):
-                    self.logger.warning(f"📝 텍스트 응답 ({image_path.name}): {part.text}")
+                    self.logger.warning(
+                        f"📝 Text response for {image_path.name}: {part.text}"
+                    )
                     return False
 
         except Exception as e:
-            self.logger.error(f"⚠️ {image_path.name} 처리 중 오류 발생: {e}")
+            self.logger.error(f"⚠️ Error processing {image_path.name}: {e}")
             return False
         return False
 
@@ -112,9 +151,15 @@ class CleanAnnotation:
     # 🚀 Public API
     # ============================================================
     def run(self):
-        """카테고리별 폴더를 순회하며 annotation 제거 수행"""
+        """
+        Clean all annotated images under each category folder.
+
+        The method scans each category directory (e.g., 'repair', 'replace'),
+        sends images to the Gemini model to remove visual marks,
+        and saves the cleaned images to the output directory.
+        """
         if not self.input_root.exists():
-            raise FileNotFoundError(f"❌ 입력 폴더를 찾을 수 없습니다: {self.input_root}")
+            raise FileNotFoundError(f"❌ Input folder not found: {self.input_root}")
 
         self.output_root.mkdir(parents=True, exist_ok=True)
         processed_count = 0
@@ -125,24 +170,36 @@ class CleanAnnotation:
             out_dir.mkdir(parents=True, exist_ok=True)
 
             if not in_dir.exists():
-                self.logger.warning(f"⚠️ 폴더 없음: {in_dir}")
+                self.logger.warning(f"⚠️ Missing folder: {in_dir}")
                 continue
 
-            image_files = [f for f in os.listdir(in_dir) if f.lower().endswith((".jpg", ".jpeg", ".png"))]
+            image_files = [
+                f
+                for f in os.listdir(in_dir)
+                if f.lower().endswith((".jpg", ".jpeg", ".png"))
+            ]
 
             for filename in image_files:
                 input_path = in_dir / filename
                 output_path = out_dir / filename
 
                 if output_path.exists():
-                    self.logger.info(f"⏩ {filename} 이미 존재 → 건너뜀")
+                    self.logger.info(f"⏩ Skipping existing file: {filename}")
                     continue
 
                 success = self._generate_clean_image(input_path, output_path)
                 processed_count += int(success)
 
-                if self.test_mode and self.test_limit and processed_count >= self.test_limit:
-                    self.logger.info(f"🧪 테스트 제한 도달 ({self.test_limit}장). 중단.")
+                if (
+                    self.test_mode
+                    and self.test_limit
+                    and processed_count >= self.test_limit
+                ):
+                    self.logger.info(
+                        f"🧪 Test mode limit reached ({self.test_limit}). Stopping early."
+                    )
                     return
 
-        self.logger.info(f"🎉 모든 이미지 처리 완료. 총 {processed_count}개 파일.")
+        self.logger.info(
+            f"🎉 Cleaning complete. Total processed: {processed_count} images."
+        )

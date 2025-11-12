@@ -4,26 +4,33 @@
 """
 evaluate.py
 -----------
-Evaluator 클래스 기반 통합 평가 모듈
+Performs end-to-end evaluation of trained classification models.
+
+This module loads a saved model, runs inference on the test dataset,
+computes key performance metrics (Accuracy, F1-score), and exports results
+including a confusion matrix visualization.
+Supports both local evaluation and Weights & Biases logging.
 """
 
-import os
 import json
-import torch
-from sklearn.metrics import accuracy_score, f1_score, confusion_matrix, ConfusionMatrixDisplay
-from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
-import wandb
-from pathlib import Path
 import sys
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import torch
+from sklearn.metrics import (ConfusionMatrixDisplay, accuracy_score,
+                             confusion_matrix, f1_score)
+from torch.utils.data import DataLoader
+
+import wandb
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT_DIR))
 
-from utils.logging import setup_logging, get_logger
 from src.classifier.data.cnn_data_loader import ClassificationDataset
 from src.classifier.data.data_preprocessing import DataPreprocessor
 from src.classifier.models.factory import get_model
+from utils.logging import get_logger, setup_logging
 
 
 class Evaluator:
@@ -64,7 +71,9 @@ class Evaluator:
         # --- Classifier가 이미 확장한 경로 그대로 사용 ---
         self.save_root = Path(self.train_cfg["save_dir"])
         self.metric_root = Path(self.train_cfg["metric_dir"])
-        self.check_root = Path(self.train_cfg.get("check_dir", "./checkpoints/classifier"))
+        self.check_root = Path(
+            self.train_cfg.get("check_dir", "./checkpoints/classifier")
+        )
 
         self.logger.info(f"🚀 Device: {self.device}")
         self.logger.info(f"📂 Dataset: {self.input_dir}")
@@ -157,7 +166,9 @@ class Evaluator:
             json.dump(metrics_data, f, indent=4)
 
         cm = confusion_matrix(y_true, y_pred)
-        ConfusionMatrixDisplay(confusion_matrix=cm).plot(cmap="Blues", values_format="d")
+        ConfusionMatrixDisplay(confusion_matrix=cm).plot(
+            cmap="Blues", values_format="d"
+        )
         plt.savefig(cm_path, dpi=200, bbox_inches="tight")
         plt.close()
 

@@ -1,22 +1,40 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+test_train_pipeline.py
+------------------------
+Unit and integration tests for the classifier training pipeline.
+
+Covers:
+1️⃣ Config loading
+2️⃣ WandB initialization
+3️⃣ train_one_epoch() and validate()
+4️⃣ train_model() saving behavior
+5️⃣ Classifier.run() integration
+6️⃣ Exception handling
+"""
+
 import os
-import tempfile
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 import pytest
 import torch
-from torch.utils.data import DataLoader, TensorDataset
 from PIL import Image
+from torch.utils.data import DataLoader, TensorDataset
 
-from src.classifier.train import train_one_epoch, validate, train_model
 from src.classifier.classifier import Classifier
+from src.classifier.train import train_model, train_one_epoch, validate
 
 
 # ======================================================
-# ✅ 1️⃣ config 로드 테스트
+# ✅ 1️⃣ Config Loading
 # ======================================================
 def test_load_config_contains_sections(tmp_path):
-    """config.yaml 기본 섹션 존재 여부 테스트"""
+    """Verify that config.yaml contains required sections."""
     cfg_file = tmp_path / "config.yaml"
-    cfg_file.write_text("""
+    cfg_file.write_text(
+        """
 classifier:
   data:
     input_dir: "data/original"
@@ -30,21 +48,23 @@ classifier:
     check_dir: "./checkpoints/classifier"
   wandb:
     enabled: false
-""")
+"""
+    )
 
     clf = Classifier(str(cfg_file))
     cfg = clf.cfg
     assert "data" in cfg and "train" in cfg and "wandb" in cfg
-    print("✅ _load_config() 테스트 통과")
+    print("✅ _load_config() passed")
 
 
 # ======================================================
-# ✅ 2️⃣ wandb 초기화 테스트
+# ✅ 2️⃣ WandB Initialization
 # ======================================================
 def test_init_wandb_disabled(tmp_path):
-    """wandb 비활성화 시 None 반환"""
+    """_init_wandb(): should return None when disabled."""
     cfg_file = tmp_path / "config.yaml"
-    cfg_file.write_text("""
+    cfg_file.write_text(
+        """
 classifier:
   data:
     input_dir: "data/original"
@@ -52,19 +72,21 @@ classifier:
     model_name: "mobilenet_v2"
   wandb:
     enabled: false
-""")
+"""
+    )
 
     clf = Classifier(str(cfg_file))
     result = clf._init_wandb()
     assert result is None
-    print("✅ _init_wandb() 테스트 통과 — disabled")
+    print("✅ _init_wandb() passed — disabled mode")
 
 
 @patch("wandb.init")
 def test_init_wandb_enabled(mock_init, tmp_path):
-    """wandb 활성화 시 init 호출 여부"""
+    """_init_wandb(): should call wandb.init() when enabled."""
     cfg_file = tmp_path / "config.yaml"
-    cfg_file.write_text("""
+    cfg_file.write_text(
+        """
 classifier:
   data:
     input_dir: "data/original_crop/yolov2"
@@ -75,20 +97,21 @@ classifier:
     project: "TestProj"
     entity: "TestEntity"
     run_name_pattern: "{model}_{input_dir}"
-""")
+"""
+    )
 
     clf = Classifier(str(cfg_file))
     wandb_obj = clf._init_wandb()
     mock_init.assert_called_once()
     assert wandb_obj is not None
-    print("✅ _init_wandb() 테스트 통과 — enabled")
+    print("✅ _init_wandb() passed — enabled mode")
 
 
 # ======================================================
-# ✅ 3️⃣ train_one_epoch / validate 테스트
+# ✅ 3️⃣ train_one_epoch() / validate() Tests
 # ======================================================
 def make_dummy_dataloader(batch_size=4, num_samples=8):
-    """작은 TensorDataset 생성"""
+    """Create a small dummy TensorDataset for quick testing."""
     x = torch.rand(num_samples, 3, 360, 360)
     y = (torch.rand(num_samples, 1) > 0.5).float()
     dataset = TensorDataset(x, y)
@@ -96,19 +119,23 @@ def make_dummy_dataloader(batch_size=4, num_samples=8):
 
 
 def test_train_one_epoch():
+    """train_one_epoch(): verifies loss and accuracy computation."""
     dataloader = make_dummy_dataloader()
     model = torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(3 * 360 * 360, 1))
     criterion = torch.nn.BCEWithLogitsLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     device = torch.device("cpu")
 
-    train_loss, train_acc = train_one_epoch(model, dataloader, criterion, optimizer, device)
+    train_loss, train_acc = train_one_epoch(
+        model, dataloader, criterion, optimizer, device
+    )
     assert train_loss >= 0
     assert 0 <= train_acc <= 1
     print(f"✅ train_one_epoch() OK — loss={train_loss:.4f}, acc={train_acc:.4f}")
 
 
 def test_validate():
+    """validate(): verifies evaluation loss and accuracy computation."""
     dataloader = make_dummy_dataloader()
     model = torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(3 * 360 * 360, 1))
     criterion = torch.nn.BCEWithLogitsLoss()
@@ -121,9 +148,10 @@ def test_validate():
 
 
 # ======================================================
-# ✅ 4️⃣ train_model() 테스트
+# ✅ 4️⃣ train_model() Tests
 # ======================================================
 def test_train_model_saves_best(tmp_path):
+    """train_model(): should save best and last checkpoint files."""
     model = torch.nn.Sequential(torch.nn.Flatten(), torch.nn.Linear(3 * 360 * 360, 1))
     dataloader = make_dummy_dataloader()
     criterion = torch.nn.BCEWithLogitsLoss()
@@ -135,12 +163,16 @@ def test_train_model_saves_best(tmp_path):
     os.makedirs(check_path.parent, exist_ok=True)
 
     best_acc = train_model(
-        model, dataloader, dataloader,
-        criterion, optimizer,
-        device, epochs=2,
+        model,
+        dataloader,
+        dataloader,
+        criterion,
+        optimizer,
+        device,
+        epochs=2,
         save_path=str(save_path),
         check_path=str(check_path),
-        wandb_run=None
+        wandb_run=None,
     )
 
     assert save_path.exists()
@@ -149,13 +181,13 @@ def test_train_model_saves_best(tmp_path):
 
 
 # ======================================================
-# ✅ 5️⃣ Classifier.run() 통합(Mock)
+# ✅ 5️⃣ Classifier.run() Integration Test
 # ======================================================
 @patch("src.classifier.train.train_model", return_value=0.95)
 @patch("src.classifier.models.factory.get_model")
 @patch("src.classifier.evaluate.Evaluator.run", return_value=(0.90, 0.88))
 def test_classifier_run(mock_eval_run, mock_get_model, mock_train_model, tmp_path):
-    """Classifier 전체 파이프라인(Mock) 테스트"""
+    """Classifier.run(): full pipeline test with mocks."""
     data_dir = tmp_path / "data" / "original_crop" / "yolov2"
     train_dir = data_dir / "train" / "repair"
     valid_dir = data_dir / "valid" / "repair"
@@ -165,7 +197,8 @@ def test_classifier_run(mock_eval_run, mock_get_model, mock_train_model, tmp_pat
     Image.new("RGB", (10, 10)).save(valid_dir / "x.jpg")
 
     cfg_file = tmp_path / "config.yaml"
-    cfg_file.write_text(f"""
+    cfg_file.write_text(
+        f"""
 classifier:
   data:
     input_dir: "{data_dir}"
@@ -180,7 +213,8 @@ classifier:
     check_dir: "{tmp_path}/checkpoints/classifier"
   wandb:
     enabled: false
-""")
+"""
+    )
 
     mock_model = MagicMock()
     mock_model.parameters.return_value = [torch.nn.Parameter(torch.randn(2, 2))]
@@ -193,13 +227,16 @@ classifier:
     assert isinstance(best_acc, float)
     assert isinstance(acc, float)
     assert isinstance(f1, float)
-    print(f"✅ Classifier.run() 테스트 통합 통과 — best_acc={best_acc:.4f}, acc={acc:.4f}, f1={f1:.4f}")
+    print(
+        f"✅ Classifier.run() OK — best_acc={best_acc:.4f}, acc={acc:.4f}, f1={f1:.4f}"
+    )
 
 
 # ======================================================
-# ✅ 6️⃣ 예외 처리 테스트
+# ✅ 6️⃣ Exception Handling
 # ======================================================
 def test_load_config_file_not_found():
+    """Ensure Classifier raises FileNotFoundError when config missing."""
     with pytest.raises(FileNotFoundError):
         Classifier("./non_existent.yaml")
-    print("✅ 예외 처리 테스트 통과 — FileNotFoundError")
+    print("✅ Exception handling OK — FileNotFoundError")

@@ -4,16 +4,14 @@
 """
 data_prepare.py
 ---------------
-DarknetDataPreparer (Config-driven)
-
-- Prepares dataset splits and metadata files (train.txt, valid.txt, test.txt, obj.data, obj.names)
-- Works with injected config object (no direct YAML read)
-- Compatible with third_party/darknet/data layout
+This module prepares dataset splits and metadata files for Darknet-based YOLO models.
+It generates train/valid/test file lists, class label files, and configuration files
+(obj.data and obj.names) based on the provided configuration object.
 """
 
-from pathlib import Path
-from typing import Dict, Any
 import sys
+from pathlib import Path
+from typing import Any, Dict
 
 ROOT_DIR = Path(__file__).resolve().parents[5]
 sys.path.append(str(ROOT_DIR))
@@ -23,25 +21,36 @@ from utils.logging import get_logger
 
 class DarknetDataPreparer:
     """
-    Prepares dataset for Darknet (YOLOv2/v4).
-    Supports Roboflow-like (train/images/*.jpg) and flat (train/*.jpg) structures.
+    Handles dataset preparation for YOLOv2 or YOLOv4 training with Darknet.
+
+    This class automates the creation of data split lists and configuration
+    files, making the dataset compatible with the expected Darknet directory
+    structure. It supports both flat and Roboflow-style folder layouts.
     """
 
     def __init__(self, config: Dict[str, Any]):
+        """
+        Initialize the dataset preparer using a configuration dictionary.
+
+        Args:
+            config (Dict[str, Any]): The full configuration object injected
+                from the main controller, containing dataset and Darknet settings.
+
+        """
         self.logger = get_logger("yolo_cropper.DarknetDataPreparer")
 
-        # ----------------------------------------------------
-        # Parse nested config
-        # ----------------------------------------------------
         self.cfg = config
         self.yolo_cropper_cfg = self.cfg.get("yolo_cropper", {})
         self.main_cfg = self.yolo_cropper_cfg.get("main", {})
         self.darknet_cfg = self.yolo_cropper_cfg.get("darknet", {})
         self.dataset_cfg = self.yolo_cropper_cfg.get("dataset", {})
 
-        # Directories
-        self.base_dir = Path(self.dataset_cfg.get("train_data_dir", "data/yolo_cropper"))
-        self.darknet_data_dir = Path(self.darknet_cfg.get("darknet_data_dir", "third_party/darknet/data"))
+        self.base_dir = Path(
+            self.dataset_cfg.get("train_data_dir", "data/yolo_cropper")
+        )
+        self.darknet_data_dir = Path(
+            self.darknet_cfg.get("darknet_data_dir", "third_party/darknet/data")
+        )
         self.model_name = self.main_cfg.get("model_name", "yolov2").lower()
 
         self.darknet_data_dir.mkdir(parents=True, exist_ok=True)
@@ -54,11 +63,20 @@ class DarknetDataPreparer:
             f"→ base_dir={self.base_dir}/{self.model_name}, darknet_data_dir={self.darknet_data_dir}"
         )
 
-    # ----------------------------------------------------
-    # 🔹 Public API
-    # ----------------------------------------------------
     def prepare(self):
-        self.logger.info(f"Preparing Darknet dataset for {self.model_name.upper()} → {self.darknet_data_dir}")
+        """
+        Prepare all Darknet-compatible dataset files.
+
+        This method generates:
+            - train.txt / valid.txt / test.txt (image paths)
+            - obj.data and obj.names (Darknet configuration files)
+
+        Returns:
+            dict: A dictionary containing paths to all generated files.
+        """
+        self.logger.info(
+            f"Preparing Darknet dataset for {self.model_name.upper()} → {self.darknet_data_dir}"
+        )
         self._generate_split_lists()
         class_names = self._get_class_names()
         self._generate_obj_files(class_names)
@@ -71,10 +89,13 @@ class DarknetDataPreparer:
             "obj_names": str(self.darknet_data_dir / "obj.names"),
         }
 
-    # ----------------------------------------------------
-    # 🔹 Step 1: 이미지 리스트 생성
-    # ----------------------------------------------------
     def _generate_split_lists(self):
+        """
+        Generate image list files (train.txt, valid.txt, test.txt).
+
+        The method scans dataset subfolders and writes full image paths
+        for each split, ensuring compatibility with Darknet’s expected structure.
+        """
         exts = (".jpg", ".jpeg", ".png", ".bmp")
 
         for split in ["train", "valid", "test"]:
@@ -83,39 +104,58 @@ class DarknetDataPreparer:
                 self.logger.warning(f"⚠️ Split folder missing: {base_dir}")
                 continue
 
-            img_dir = base_dir / "images" if (base_dir / "images").exists() else base_dir
+            img_dir = (
+                base_dir / "images" if (base_dir / "images").exists() else base_dir
+            )
             output_file = self.darknet_data_dir / f"{split}.txt"
 
             images = [
-                str(p.resolve()) for p in sorted(img_dir.glob("*"))
+                str(p.resolve())
+                for p in sorted(img_dir.glob("*"))
                 if p.suffix.lower() in exts
             ]
             if not images:
                 raise ValueError(f"No images found in {img_dir}")
 
             output_file.write_text("\n".join(images) + "\n", encoding="utf-8")
-            self.logger.info(f"  └─ [{split}] {len(images)} images listed → {output_file.name}")
+            self.logger.info(
+                f"  └─ [{split}] {len(images)} images listed → {output_file.name}"
+            )
 
-    # ----------------------------------------------------
-    # 🔹 Step 2: 클래스명 추출
-    # ----------------------------------------------------
     def _get_class_names(self):
-        """Load class names from _darknet.labels or _classes.txt."""
+        """
+        Retrieve class names from existing label files.
+
+        This method checks for `_darknet.labels` or `_classes.txt` files
+        inside the dataset directory and loads class names from the first
+        available file.
+
+        Returns:
+            list[str]: A list of class names.
+
+        """
         candidates = [
             self.base_dir / self.model_name / "train" / "_darknet.labels",
             self.base_dir / "_classes.txt",
         ]
         for path in candidates:
             if path.exists():
-                class_names = [c.strip() for c in path.read_text(encoding="utf-8").splitlines() if c.strip()]
-                self.logger.info(f"  └─ Loaded {len(class_names)} classes from {path.name}: {class_names}")
+                class_names = [
+                    c.strip()
+                    for c in path.read_text(encoding="utf-8").splitlines()
+                    if c.strip()
+                ]
+                self.logger.info(
+                    f"  └─ Loaded {len(class_names)} classes from {path.name}: {class_names}"
+                )
                 return class_names
         raise FileNotFoundError("❌ No _darknet.labels or _classes.txt found.")
 
-    # ----------------------------------------------------
-    # 🔹 Step 3: obj.data / obj.names 생성
-    # ----------------------------------------------------
     def _generate_obj_files(self, class_names):
+        """
+        Create obj.data and obj.names files for Darknet training.
+
+        """
         obj_data = self.darknet_data_dir / "obj.data"
         obj_names = self.darknet_data_dir / "obj.names"
 
@@ -137,11 +177,11 @@ class DarknetDataPreparer:
         self.logger.info(f"  └─ obj.data / obj.names created ({num_classes} classes)")
         self.logger.info(f"  └─ Backup path set to: {backup_dir.resolve()}")
 
-    # ----------------------------------------------------
-    # 🔹 Step 4: backup 경로 갱신
-    # ----------------------------------------------------
     def update_backup_path(self, backup_dir: str):
-        """Update the backup directory path in obj.data."""
+        """
+        Update the backup path defined in obj.data.
+
+        """
         obj_data_path = self.darknet_data_dir / "obj.data"
         if not obj_data_path.exists():
             raise FileNotFoundError(f"obj.data not found: {obj_data_path}")

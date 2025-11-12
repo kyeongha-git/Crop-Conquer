@@ -3,51 +3,71 @@
 
 """
 yolo_cropper.py
-----------------
+---------------
 Unified YOLO Pipeline Controller
 
-- Reads model_name from config.yaml → yolo_cropper.main.model_name
-- Automatically dispatches to corresponding pipeline:
+This module serves as the central controller for all YOLO-based
+pipelines (YOLOv2, YOLOv4, YOLOv5, YOLOv8). It automatically
+detects the target model type from the configuration file and
+dispatches execution to the corresponding pipeline class.
+
+Supported Pipelines:
     - YOLOv2 / YOLOv4 → DarknetPipeline
-    - YOLOv5 → YOLOv5Pipeline
+    - YOLOv5          → YOLOv5Pipeline
     - YOLOv8 (s/m/l/x) → YOLOv8Pipeline
 """
 
-import sys
 import importlib
+import sys
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 sys.path.append(str(ROOT_DIR))
 
 from utils.load_config import load_yaml_config
-from utils.logging import setup_logging, get_logger
+from utils.logging import get_logger, setup_logging
 
 
-# --------------------------------------------------------
-# 🔹 Unified YOLO Cropper Controller
-# --------------------------------------------------------
 class YOLOCropperController:
+    """
+    Unified YOLO Cropper Controller.
+
+    """
+
     def __init__(self, config_path: str = "utils/config.yaml"):
+        """
+        Initialize the unified YOLO Cropper controller.
+
+        Args:
+            config_path (str): Path to the configuration YAML file.
+                Must contain a `yolo_cropper.main.model_name` entry
+                specifying the YOLO version to use.
+        """
         setup_logging("logs/yolo_cropper")
         self.logger = get_logger("yolo_cropper.Controller")
 
+        # Load configuration
         self.config_path = Path(config_path)
         self.cfg = load_yaml_config(self.config_path)
         self.yolo_cropper_cfg = self.cfg.get("yolo_cropper", {})
         self.main_cfg = self.yolo_cropper_cfg.get("main", {})
 
-        # config에서 model_name 읽기
+        # Model name resolution
         self.model_name = self.main_cfg.get("model_name", "yolov5").lower()
-        self.logger.info(f"Initialized YOLO Cropper Controller ({self.model_name.upper()})")
+        self.logger.info(
+            f"Initialized YOLO Cropper Controller ({self.model_name.upper()})"
+        )
 
-    # --------------------------------------------------------
-    # 🔹 모델별 파이프라인 매핑 및 실행
-    # --------------------------------------------------------
     def run(self):
-        """Dispatch execution based on model_name"""
+        """
+        Dispatch the appropriate YOLO pipeline based on `model_name`.
 
-        # YOLOv8 계열 문자열 패턴 처리
+        Returns:
+            dict | None: Evaluation metrics dictionary (if applicable)
+            or None if the pipeline does not return metrics.
+
+        """
+        # Handle YOLO version mapping
         if self.model_name.startswith("yolov8"):
             module_path = "src.yolo_cropper.models.yolov8.yolov8"
             class_name = "YOLOv8Pipeline"
@@ -62,17 +82,19 @@ class YOLOCropperController:
 
         self.logger.info(f"📦 Loading pipeline → {module_path}.{class_name}")
 
-        # 모듈 로드
+        # Dynamic import
         try:
             module = importlib.import_module(module_path)
         except ModuleNotFoundError as e:
             raise ImportError(f"❌ Failed to import module {module_path}: {e}")
 
-        # 클래스 확인
+        # Validate class existence
         if not hasattr(module, class_name):
-            raise AttributeError(f"❌ {module_path} 내에 '{class_name}' 클래스가 없습니다.")
+            raise AttributeError(
+                f"❌ {module_path} does not define class '{class_name}'."
+            )
 
-        # 파이프라인 클래스 로드 및 실행
+        # Instantiate and run pipeline
         pipeline_class = getattr(module, class_name)
         pipeline = pipeline_class(config_path=str(self.config_path))
 
@@ -84,13 +106,18 @@ class YOLOCropperController:
 
 
 # --------------------------------------------------------
-# ✅ CLI Entry
+# CLI Entry Point
 # --------------------------------------------------------
 if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Unified YOLO Cropper Controller")
-    parser.add_argument("--config", type=str, default="utils/config.yaml", help="Path to config.yaml")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="utils/config.yaml",
+        help="Path to the configuration YAML file",
+    )
     args = parser.parse_args()
 
     controller = YOLOCropperController(config_path=args.config)

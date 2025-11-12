@@ -4,17 +4,15 @@
 """
 make_manager.py
 ---------------
-Darknet Makefile Configuration & Build Manager (Config-driven)
-
-- Receives config object from main controller (YOLOCropper)
-- No direct YAML loading inside
-- Compatible with third_party/darknet structure
+This module manages Darknet’s Makefile configuration and build process.
+It updates compilation flags based on the selected build mode (e.g., CPU or GPU)
+and automates the rebuilding and verification of the Darknet executable.
 """
 
 import subprocess
-from pathlib import Path
-from typing import Dict, Any
 import sys
+from pathlib import Path
+from typing import Any, Dict
 
 ROOT_DIR = Path(__file__).resolve().parents[5]
 sys.path.append(str(ROOT_DIR))
@@ -24,28 +22,36 @@ from utils.logging import get_logger
 
 class MakeManager:
     """
-    Handles Darknet Makefile configuration and build process.
-    Reads build_mode and modes flags from injected config.
+    Manages Darknet’s Makefile configuration and build workflow.
+
+    This class automatically adjusts Makefile flags according to the user’s
+    chosen build mode (CPU, GPU, etc.), rebuilds Darknet, and verifies that
+    the compiled executable runs correctly.
     """
 
     def __init__(self, config: Dict[str, Any]):
+        """
+        Initialize the MakeManager with configuration parameters.
+
+        Args:
+            config (Dict[str, Any]): Configuration dictionary provided
+                by the main controller, containing Darknet build settings.
+
+        """
         self.logger = get_logger("yolo_cropper.MakeManager")
 
-        # --------------------------------------------------------
-        # Parse nested config
-        # --------------------------------------------------------
         self.cfg = config
         self.yolo_cropper_cfg = self.cfg.get("yolo_cropper", {})
         self.darknet_cfg = self.yolo_cropper_cfg.get("darknet", {})
 
-        # Define paths
-        self.darknet_dir = Path(self.darknet_cfg.get("darknet_dir", "third_party/darknet")).resolve()
+        self.darknet_dir = Path(
+            self.darknet_cfg.get("darknet_dir", "third_party/darknet")
+        ).resolve()
         self.makefile = self.darknet_dir / "Makefile"
 
         if not self.makefile.exists():
             raise FileNotFoundError(f"❌ Makefile not found in {self.darknet_dir}")
 
-        # Determine build mode
         self.build_mode = self.darknet_cfg.get("build_mode", "cpu").lower()
         self.mode_flags = self.darknet_cfg.get("modes", {}).get(self.build_mode)
 
@@ -55,14 +61,15 @@ class MakeManager:
             )
 
         self.jobs = self.mode_flags.get("MAKE_JOBS", 4)
+        self.logger.info(
+            f"Initialized MakeManager for {self.build_mode.upper()} mode in {self.darknet_dir}"
+        )
 
-        self.logger.info(f"Initialized MakeManager for {self.build_mode.upper()} mode in {self.darknet_dir}")
-
-    # --------------------------------------------------------
-    # 🔹 Public Methods
-    # --------------------------------------------------------
     def configure(self, quiet: bool = True):
-        """Update Makefile based on selected build mode."""
+        """
+        Apply the selected build configuration to Darknet’s Makefile.
+
+        """
         self.logger.info(f"Configuring Makefile for {self.build_mode.upper()} build...")
 
         patch_flags = {k: v for k, v in self.mode_flags.items() if k != "MAKE_JOBS"}
@@ -71,7 +78,12 @@ class MakeManager:
         self.logger.info(f"[✓] Makefile configured for {self.build_mode.upper()} mode")
 
     def rebuild(self, quiet: bool = True):
-        """Run 'make clean' and 'make -j' to rebuild Darknet."""
+        """
+        Clean and rebuild Darknet using the configured Makefile.
+
+        This runs `make clean` followed by `make -j` to compile the Darknet executable.
+
+        """
         self.logger.info("Cleaning and rebuilding Darknet...")
 
         def _run(cmd):
@@ -85,13 +97,20 @@ class MakeManager:
 
         _run(["make", "clean"])
         _run(["make", f"-j{self.jobs}"])
-        self.logger.info(f"[✓] Darknet build complete ({self.build_mode.upper()} mode, jobs={self.jobs})")
+        self.logger.info(
+            f"[✓] Darknet build complete ({self.build_mode.upper()} mode, jobs={self.jobs})"
+        )
 
     def verify_darknet(self, quiet: bool = True):
-        """Verify that the Darknet executable exists and runs."""
+        """
+        Verify that the Darknet executable exists and runs successfully.
+
+        """
         darknet_exec = self.darknet_dir / "darknet"
         if not darknet_exec.exists():
-            raise FileNotFoundError("❌ Darknet executable not found. Did you build it?")
+            raise FileNotFoundError(
+                "❌ Darknet executable not found. Did you build it?"
+            )
 
         subprocess.run(
             ["./darknet"],
@@ -102,11 +121,11 @@ class MakeManager:
         )
         self.logger.info("[✓] Darknet executable verified successfully")
 
-    # --------------------------------------------------------
-    # 🔹 Internal Helper
-    # --------------------------------------------------------
     def _patch_makefile(self, flags: dict, quiet: bool = True):
-        """Update key=value pairs in Makefile using sed."""
+        """
+        Modify Makefile key-value pairs according to provided build flags.
+
+        """
         for key, value in flags.items():
             try:
                 subprocess.run(

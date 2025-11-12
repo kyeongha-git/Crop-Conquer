@@ -1,23 +1,40 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-import pytest
-from pathlib import Path
-import yaml
+"""
+test_load_config.py & test_logging.py
+-------------------------------------
+Comprehensive unit tests for:
+    • `utils.load_config.load_yaml_config`
+    • `utils.logging` (setup_logging, get_logger)
+
+Goals:
+    ✅ Validate YAML loading and error handling
+    ✅ Ensure logging setup and file generation work correctly
+    ✅ Verify logger instances and handler behavior
+"""
+
 import logging
 
+import pytest
+import yaml
+
 from utils.load_config import load_yaml_config
-from utils.logging import setup_logging, get_logger
+from utils.logging import get_logger, setup_logging
 
+# ==============================================================
+# 🔹 Tests for load_yaml_config
+# ==============================================================
 
-"""
-test_load_config.py
--------------------
-Unit tests for `utils.load_config.load_yaml_config`.
-"""
 
 def test_load_valid_yaml(tmp_path):
-    """✅ 정상 YAML 로드 테스트"""
+    """
+    Verify that a valid YAML file is successfully loaded.
+
+    Ensures:
+        - Keys and nested structures are parsed correctly.
+        - Values match expected content.
+    """
     config_content = """
     data_augmentor:
       data:
@@ -37,14 +54,20 @@ def test_load_valid_yaml(tmp_path):
 
 
 def test_file_not_found(tmp_path):
-    """❌ 존재하지 않는 파일 경로"""
+    """
+    Verify that FileNotFoundError is raised when the YAML file does not exist.
+    """
     nonexistent_path = tmp_path / "no_such_file.yaml"
     with pytest.raises(FileNotFoundError):
         load_yaml_config(nonexistent_path)
 
 
 def test_invalid_yaml_syntax(tmp_path):
-    """❌ YAML 문법 오류"""
+    """
+    Verify that YAML syntax errors raise `yaml.YAMLError`.
+
+    This ensures that malformed YAML content is properly detected.
+    """
     invalid_yaml_content = """
     data_augmentor:
       data:
@@ -65,16 +88,29 @@ def test_invalid_yaml_syntax(tmp_path):
 
 
 def test_invalid_yaml_structure(tmp_path):
-    """❌ YAML의 최상단 구조가 dict가 아닐 경우"""
+    """
+    Verify that ValueError is raised when the top-level YAML structure is not a dictionary.
+
+    Example:
+        A YAML file starting with a list (e.g. `- item1`) should raise an error.
+    """
     yaml_path = tmp_path / "invalid_type.yaml"
-    yaml_path.write_text("- item1\n- item2", encoding="utf-8")  # 리스트 형태
+    yaml_path.write_text(
+        "- item1\n- item2", encoding="utf-8"
+    )  # List type instead of dict
 
     with pytest.raises(ValueError):
         load_yaml_config(yaml_path)
 
 
 def test_path_is_resolved(tmp_path):
-    """📄 Path.resolve()가 절대 경로로 변환되는지 테스트"""
+    """
+    Ensure the path is resolved to an absolute path and the file exists.
+
+    Confirms:
+        - YAML is parsed correctly.
+        - The file path resolves properly via Path.resolve().
+    """
     yaml_path = tmp_path / "config.yaml"
     yaml_path.write_text("root: test", encoding="utf-8")
 
@@ -85,7 +121,9 @@ def test_path_is_resolved(tmp_path):
 
 
 def test_stdout_message_contains_loaded_path(tmp_path, capsys):
-    """🖨️ 정상 로드 시 콘솔 출력 메시지 확인"""
+    """
+    Verify that console output includes the 'Loaded configuration' message and resolved path.
+    """
     yaml_path = tmp_path / "config.yaml"
     yaml_path.write_text("root: test", encoding="utf-8")
 
@@ -96,28 +134,33 @@ def test_stdout_message_contains_loaded_path(tmp_path, capsys):
     assert str(yaml_path.resolve()) in out
 
 
-"""
-test_logging.py
----------------
-Unit tests for `utils.logging`.
-"""
+# ==============================================================
+# 🔹 Tests for utils.logging
+# ==============================================================
+
 
 def test_setup_logging_creates_log_dir_and_file(tmp_path):
-    """📁 로그 디렉토리와 로그 파일이 생성되는지 테스트"""
+    """
+    Verify that setup_logging() creates a log directory and a log file.
+
+    Checks:
+        - Directory existence
+        - One `.log` file is generated
+    """
     log_dir = tmp_path / "logs"
     setup_logging(log_dir)
 
-    # 디렉토리 생성 확인
-    assert log_dir.exists(), "Log directory not created"
+    assert log_dir.exists(), "Log directory was not created"
 
-    # 로그 파일 생성 확인
     log_files = list(log_dir.glob("run_*.log"))
-    assert len(log_files) == 1, "Log file not created"
+    assert len(log_files) == 1, "Log file was not created"
     assert log_files[0].suffix == ".log"
 
 
 def test_setup_logging_registers_handlers(tmp_path):
-    """🧩 StreamHandler와 FileHandler가 모두 등록되는지 테스트"""
+    """
+    Verify that both StreamHandler and FileHandler are registered to the root logger.
+    """
     log_dir = tmp_path / "logs"
     setup_logging(log_dir)
 
@@ -129,7 +172,13 @@ def test_setup_logging_registers_handlers(tmp_path):
 
 
 def test_logging_writes_to_file(tmp_path):
-    """📝 로그 메시지가 파일에 실제로 기록되는지 테스트"""
+    """
+    Verify that log messages are written to the log file.
+
+    Checks:
+        - Log message presence
+        - INFO level inclusion
+    """
     log_dir = tmp_path / "logs"
     setup_logging(log_dir)
     logger = get_logger("test_logger")
@@ -139,12 +188,14 @@ def test_logging_writes_to_file(tmp_path):
     log_file = next(log_dir.glob("run_*.log"))
     content = log_file.read_text(encoding="utf-8")
 
-    assert "Hello, logging test!" in content, "Message not written to log file"
-    assert "INFO" in content, "INFO level not found in log content"
+    assert "Hello, logging test!" in content, "Message not found in log file"
+    assert "INFO" in content, "INFO level missing from log file"
 
 
 def test_get_logger_returns_same_instance():
-    """🔁 동일 name 호출 시 동일 Logger 인스턴스를 반환하는지 테스트"""
+    """
+    Verify that calling get_logger() with the same name returns the same Logger instance.
+    """
     logger_a = get_logger("module_a")
     logger_b = get_logger("module_a")
 
@@ -152,7 +203,9 @@ def test_get_logger_returns_same_instance():
 
 
 def test_get_logger_returns_different_instances_for_different_names():
-    """⚙️ 서로 다른 name일 때 서로 다른 Logger 인스턴스인지 테스트"""
+    """
+    Verify that get_logger() returns different Logger instances for different names.
+    """
     logger_a = get_logger("module_a")
     logger_b = get_logger("module_b")
 

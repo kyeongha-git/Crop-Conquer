@@ -4,14 +4,14 @@
 """
 cnn_data_loader.py
 -------------------
-📦 Unified data loading module for image classification tasks.
+Unified data loading module for image classification tasks.
 
-Features:
-- PyTorch-style Dataset class (lazy loading)
-- Automatic label mapping (str <-> int)
-- DataLoader helper for easy batch creation
-- Compatible with train / valid / test splits
-- Extensible for any custom dataset directory structure
+This module provides:
+- A PyTorch-compatible Dataset class for structured image folders.
+- Automatic label mapping between string and integer IDs.
+- A DataLoader helper for efficient mini-batch creation.
+- Support for standard dataset splits (train / valid / test).
+- Easy integration with custom datasets following a class-folder structure.
 
 Example:
     from src.classifier.data.cnn_data_loader import create_dataloader
@@ -25,17 +25,29 @@ Example:
 """
 
 import os
-from typing import List, Tuple, Dict, Optional
+from typing import Dict, List, Tuple
+
 from PIL import Image
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
 
 # ============================================================
 # Utility Functions
 # ============================================================
-def list_image_paths(root_dir: str, exts: Tuple[str, ...] = (".jpg", ".jpeg", ".png")) -> List[Tuple[str, str]]:
-    """Return (image_path, class_name) pairs from directory."""
+def list_image_paths(
+    root_dir: str, exts: Tuple[str, ...] = (".jpg", ".jpeg", ".png")
+) -> List[Tuple[str, str]]:
+    """
+    Collect all image file paths and their corresponding class names from a directory.
+
+    Args:
+        root_dir (str): Root directory containing class subfolders.
+        exts (Tuple[str]): Valid image file extensions.
+
+    Returns:
+        List[Tuple[str, str]]: List of (image_path, class_name) pairs.
+    """
     if not os.path.exists(root_dir):
         raise FileNotFoundError(f"❌ Data path not found: {root_dir}")
 
@@ -46,14 +58,24 @@ def list_image_paths(root_dir: str, exts: Tuple[str, ...] = (".jpg", ".jpeg", ".
             continue
         for filename in os.listdir(class_path):
             if filename.lower().endswith(exts):
-                image_label_pairs.append((os.path.join(class_path, filename), class_name))
+                image_label_pairs.append(
+                    (os.path.join(class_path, filename), class_name)
+                )
     if not image_label_pairs:
         raise ValueError(f"⚠️ No images found under {root_dir}")
     return image_label_pairs
 
 
 def build_label_mappings(labels: List[str]) -> Tuple[Dict[str, int], Dict[int, str]]:
-    """Return label_to_idx and idx_to_label mappings."""
+    """
+    Create bidirectional mappings between class names and integer labels.
+
+    Args:
+        labels (List[str]): List of class names.
+
+    Returns:
+        Tuple[Dict[str, int], Dict[int, str]]: (label_to_idx, idx_to_label)
+    """
     unique_labels = sorted(set(labels))
     label_to_idx = {name: idx for idx, name in enumerate(unique_labels)}
     idx_to_label = {idx: name for name, idx in label_to_idx.items()}
@@ -65,13 +87,21 @@ def build_label_mappings(labels: List[str]) -> Tuple[Dict[str, int], Dict[int, s
 # ============================================================
 class ClassificationDataset(Dataset):
     """
-    Unified classification dataset (no dataset_type/version).
+    Dataset class for image classification tasks.
+
+    Expects a folder structure like:
+        data/
+        ├── train/
+        │   ├── class1/
+        │   └── class2/
+        ├── valid/
+        └── test/
 
     Args:
-        input_dir (str): e.g. 'data/original' or 'data/original_crop/yolov2'
-        split (str): 'train', 'valid', or 'test'
-        transform (callable, optional): Torch transform
-        verbose (bool): Print dataset summary
+        input_dir (str): Dataset root path (e.g., 'data/original').
+        split (str): Data split ('train', 'valid', or 'test').
+        transform (callable, optional): Torch transform for preprocessing.
+        verbose (bool): Whether to print dataset summary.
     """
 
     def __init__(
@@ -98,9 +128,16 @@ class ClassificationDataset(Dataset):
             self._log_summary(input_dir, split)
 
     def __len__(self) -> int:
+        """Return the total number of images."""
         return len(self.image_paths)
 
     def __getitem__(self, idx: int):
+        """
+        Load and return an image and its corresponding label index.
+
+        Returns:
+            (Tensor, int): Transformed image tensor and label index.
+        """
         img_path = self.image_paths[idx]
         label_name = self.labels[idx]
         label = self.label_to_idx[label_name]
@@ -114,7 +151,7 @@ class ClassificationDataset(Dataset):
         return image, label
 
     def _log_summary(self, input_dir: str, split: str) -> None:
-        """Print dataset info."""
+        """Print dataset information to console."""
         print(f"✅ Loaded dataset from {input_dir}/{split}")
         print(f" - Samples: {len(self.image_paths)}")
         print(f" - Classes: {self.label_to_idx}")
@@ -133,10 +170,19 @@ def create_dataloader(
     verbose: bool = False,
 ) -> DataLoader:
     """
-    Wrapper that builds both Dataset and DataLoader.
+    Build a PyTorch DataLoader for a given dataset split.
+
+    Args:
+        input_dir (str): Dataset root path.
+        split (str): 'train', 'valid', or 'test'.
+        transform (callable, optional): Torch transform for preprocessing.
+        batch_size (int): Number of samples per batch.
+        shuffle (bool): Whether to shuffle training data.
+        num_workers (int): Number of background workers.
+        verbose (bool): Print dataset summary if True.
 
     Returns:
-        torch.utils.data.DataLoader
+        DataLoader: Configured PyTorch DataLoader object.
     """
     dataset = ClassificationDataset(
         input_dir=input_dir,
@@ -155,7 +201,7 @@ def create_dataloader(
 
 
 # ============================================================
-# Optional: Lightweight Function for Quick Inspection
+# Lightweight Utility
 # ============================================================
 def load_dataset_as_list(
     input_dir: str,
@@ -163,13 +209,25 @@ def load_dataset_as_list(
     transform=None,
 ) -> Tuple[List, List, Dict[str, int], Dict[int, str]]:
     """
-    Load dataset fully into memory as a simple (image, label) list.
-    Use only for small-scale analysis or visualization (not for training).
+    Load an entire dataset into memory for inspection or visualization.
+
+    Suitable only for small datasets; not recommended for training.
+
+    Args:
+        input_dir (str): Dataset root path.
+        split (str): Dataset split ('train', 'valid', or 'test').
+        transform (callable, optional): Image transform.
+
+    Returns:
+        Tuple[List, List, Dict[str, int], Dict[int, str]]:
+            (images, labels, label_to_idx, idx_to_label)
     """
     root_dir = os.path.join(input_dir, split)
     image_label_pairs = list_image_paths(root_dir)
     images, labels = [], []
-    label_to_idx, idx_to_label = build_label_mappings([label for _, label in image_label_pairs])
+    label_to_idx, idx_to_label = build_label_mappings(
+        [label for _, label in image_label_pairs]
+    )
 
     for img_path, label_name in image_label_pairs:
         img = Image.open(img_path).convert("RGB")

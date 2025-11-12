@@ -4,29 +4,36 @@
 """
 image_padding.py
 ----------------
-입력 이미지를 target_size(기본 1024x1024)에 맞게 중앙 정렬 패딩하는 모듈.
-- Logging 기반
-- Class 구조화 (SRP)
-- JSON 메타데이터 기록
-- 음수 패딩 및 이미지 로드 실패 안전 처리
+This module pads input images to a fixed square size (default: 1024×1024).
+Each image is centered within the new canvas, and padding information is saved
+as JSON metadata for later reference or restoration.
 """
 
-import os
-import cv2
 import json
+import os
 import shutil
+import sys
 from pathlib import Path
 from typing import List, Optional
-import sys
 
-ROOT_DIR = Path(__file__).resolve().parents[3]  # Research/
+import cv2
+
+ROOT_DIR = Path(__file__).resolve().parents[3]
 sys.path.append(str(ROOT_DIR))
 
 from utils.logging import get_logger, setup_logging
 
 
 class ImagePadder:
-    """이미지 크기를 중앙 기준으로 패딩하고 padding 정보 메타데이터를 기록"""
+    """
+    Pads images to a target square size and records metadata about the padding.
+
+    Features:
+    - Centers each image on a black background.
+    - Automatically skips images that are already large enough.
+    - Saves padding information (top, bottom, left, right) in a JSON file.
+    - Handles corrupted or unreadable image files safely.
+    """
 
     DEFAULT_PADDING_COLOR = (0, 0, 0)
 
@@ -48,33 +55,39 @@ class ImagePadder:
         self.metadata_name = metadata_name
         self.padding_color = self.DEFAULT_PADDING_COLOR
 
-        self.logger.info(f"📂 입력 경로: {self.input_root}")
-        self.logger.info(f"💾 출력 경로: {self.output_root}")
-        self.logger.info(f"🎨 타겟 해상도: {self.target_size}")
+        self.logger.info(f"📂 Input directory: {self.input_root}")
+        self.logger.info(f"💾 Output directory: {self.output_root}")
+        self.logger.info(f"🎨 Target size: {self.target_size}")
 
     # ============================================================
-    # 🔧 내부 함수: 이미지 패딩
+    # 🔧 Internal Utility: Padding Single Image
     # ============================================================
     def _pad_image(self, image_path: Path, save_path: Path) -> Optional[dict]:
-        """이미지를 중앙 패딩하고 padding 정보를 반환"""
+        """
+        Pads a single image to the target size while keeping it centered.
+
+        Returns:
+            dict: A dictionary containing the original image size and padding details.
+            None: If the image failed to load or save.
+        """
         img = cv2.imread(str(image_path))
         if img is None:
-            self.logger.error(f"⚠️ {image_path.name}: 이미지 로드 실패 (경로 또는 형식 문제)")
+            self.logger.error(f"⚠️ {image_path.name}: Failed to load image.")
             return None
 
         h, w = img.shape[:2]
 
-        # target_size보다 크면 skip
+        # Skip padding if already larger than target
         if h >= self.target_size and w >= self.target_size:
-            self.logger.info(f"⏩ {image_path.name}: 이미 {self.target_size}px 이상 → 복사만 수행")
+            self.logger.info(f"⏩ {image_path.name}: Already large enough → copy only.")
             save_path.parent.mkdir(parents=True, exist_ok=True)
             try:
                 shutil.copy(str(image_path), str(save_path))
             except Exception as e:
-                self.logger.error(f"❌ {image_path.name}: 복사 실패 ({e})")
+                self.logger.error(f"❌ {image_path.name}: Copy failed ({e})")
             return None
 
-        # ✅ 음수 패딩 방지
+        # Calculate padding (preventing negative values)
         top = max(0, (self.target_size - h) // 2)
         bottom = max(0, self.target_size - h - top)
         left = max(0, (self.target_size - w) // 2)
@@ -82,32 +95,49 @@ class ImagePadder:
 
         try:
             padded = cv2.copyMakeBorder(
-                img, top, bottom, left, right,
-                cv2.BORDER_CONSTANT, value=self.padding_color
+                img,
+                top,
+                bottom,
+                left,
+                right,
+                cv2.BORDER_CONSTANT,
+                value=self.padding_color,
             )
             save_path.parent.mkdir(parents=True, exist_ok=True)
             success = cv2.imwrite(str(save_path), padded)
 
             if not success:
-                self.logger.error(f"❌ {image_path.name}: 저장 실패")
+                self.logger.error(f"❌ {image_path.name}: Failed to save padded image.")
                 return None
 
             return {
                 "orig_size": [h, w],
-                "pad_info": {"top": top, "left": left, "bottom": bottom, "right": right},
+                "pad_info": {
+                    "top": top,
+                    "left": left,
+                    "bottom": bottom,
+                    "right": right,
+                },
             }
 
         except Exception as e:
-            self.logger.error(f"⚠️ {image_path.name}: 패딩 중 오류 ({e})")
+            self.logger.error(f"⚠️ {image_path.name}: Error during padding ({e})")
             return None
 
     # ============================================================
     # 🚀 Public API
     # ============================================================
     def run(self):
-        """카테고리별 이미지 패딩 수행"""
+        """
+        Pads all images within each category folder and saves metadata.
+
+        - Iterates through all category subfolders (e.g., "repair", "replace").
+        - Pads smaller images to the target size.
+        - Saves both the padded images and a JSON file containing padding info.
+        - Logs skipped, copied, and processed files for transparency.
+        """
         if not self.input_root.exists():
-            raise FileNotFoundError(f"❌ 입력 폴더를 찾을 수 없습니다: {self.input_root}")
+            raise FileNotFoundError(f"❌ Input folder not found: {self.input_root}")
 
         self.output_root.mkdir(parents=True, exist_ok=True)
 
@@ -117,10 +147,10 @@ class ImagePadder:
             meta_path = out_dir / self.metadata_name
 
             if not in_dir.exists():
-                self.logger.warning(f"⚠️ 폴더 없음: {in_dir}")
+                self.logger.warning(f"⚠️ Missing folder: {in_dir}")
                 continue
 
-            self.logger.info(f"🧩 카테고리 처리 중: {category}")
+            self.logger.info(f"🧩 Processing category: {category}")
             metadata = {}
 
             for file in sorted(os.listdir(in_dir)):
@@ -133,14 +163,14 @@ class ImagePadder:
                 if info:
                     metadata[file] = info
 
-            # ✅ 메타데이터 저장
+            # Save metadata
             if metadata:
                 try:
                     with open(meta_path, "w", encoding="utf-8") as f:
                         json.dump(metadata, f, indent=4, ensure_ascii=False)
-                    self.logger.info(f"✅ Padding 완료 → {out_dir}")
-                    self.logger.info(f"🧾 메타데이터 저장 → {meta_path}")
+                    self.logger.info(f"✅ Padding complete → {out_dir}")
+                    self.logger.info(f"🧾 Metadata saved → {meta_path}")
                 except Exception as e:
-                    self.logger.error(f"❌ 메타데이터 저장 실패 ({meta_path}): {e}")
+                    self.logger.error(f"❌ Failed to save metadata ({meta_path}): {e}")
             else:
-                self.logger.info(f"⚪ {category}: 새로 생성된 패딩 없음.")
+                self.logger.info(f"⚪ {category}: No new padded images created.")

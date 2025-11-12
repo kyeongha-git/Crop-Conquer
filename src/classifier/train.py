@@ -1,19 +1,19 @@
 import os
-from tqdm import tqdm
-import torch
-import torch.nn as nn
-import wandb
 import shutil
 
-# ==============================================================
-# 🧩 Training Loop (단일 epoch)
-# ==============================================================
+import torch
+import torch.nn as nn
+from tqdm import tqdm
 
-def train_one_epoch(model: nn.Module, dataloader, criterion, optimizer, device: torch.device):
-    """
-    Perform one training epoch.
-    Returns: (avg_loss, avg_acc)
-    """
+
+
+# ==============================================================
+# 🧩 Training Loop (Single Epoch)
+# ==============================================================
+def train_one_epoch(
+    model: nn.Module, dataloader, criterion, optimizer, device: torch.device
+):
+    """Run one training epoch and return average loss and accuracy."""
     model.train()
     total_loss, total_correct = 0.0, 0
 
@@ -41,12 +41,8 @@ def train_one_epoch(model: nn.Module, dataloader, criterion, optimizer, device: 
 # ==============================================================
 # 🧩 Validation Loop
 # ==============================================================
-
 def validate(model: nn.Module, dataloader, criterion, device: torch.device):
-    """
-    Perform model validation.
-    Returns: (avg_loss, avg_acc)
-    """
+    """Evaluate the model on validation data."""
     model.eval()
     total_loss, total_correct = 0.0, 0
 
@@ -69,7 +65,7 @@ def validate(model: nn.Module, dataloader, criterion, device: torch.device):
 
 
 # ==============================================================
-# 🧩 Train + Validate Full Pipeline
+# 🧩 Full Training Pipeline
 # ==============================================================
 def train_model(
     model: nn.Module,
@@ -84,28 +80,14 @@ def train_model(
     wandb_run=None,
 ):
     """
-    Full training pipeline for classification model.
+    Execute the full training + validation loop.
 
-    Args:
-        model: model instance
-        train_loader: DataLoader for training
-        valid_loader: DataLoader for validation
-        criterion: loss function
-        optimizer: optimizer
-        device: torch.device
-        epochs: total training epochs
-        save_path: final best model save path (e.g. ./saved_model/mobilenet_v2_best.pt)
-        check_path: checkpoint base path (e.g. ./checkpoints/mobilenet_v2_last.pt)
-        wandb_run: optional wandb run object
-
-    Behavior:
-        - <check_dir>/mobilenet_v2_last.pt → 매 epoch마다 덮어쓰기
-        - <check_dir>/mobilenet_v2_best.pt → 최고 성능 시 갱신
-        - <save_dir>/mobilenet_v2_best.pt → 학습 종료 후 1회 복사
+    - Saves last checkpoint every epoch
+    - Updates best checkpoint when validation accuracy improves
+    - Copies final best model to save_path after training
     """
     best_acc = 0.0
 
-    # ✅ check_path 기반으로 last/best 경로 자동 지정
     check_dir = os.path.dirname(check_path)
     os.makedirs(check_dir, exist_ok=True)
 
@@ -115,34 +97,33 @@ def train_model(
     for epoch in range(epochs):
         print(f"\n📘 Epoch {epoch + 1}/{epochs}")
 
-        # ---- Training ----
-        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        train_loss, train_acc = train_one_epoch(
+            model, train_loader, criterion, optimizer, device
+        )
         val_loss, val_acc = validate(model, valid_loader, criterion, device)
 
         print(f"📊 Train Loss: {train_loss:.4f} | Acc: {train_acc:.4f}")
         print(f"📈 Valid Loss: {val_loss:.4f} | Acc: {val_acc:.4f}")
 
-        # ---- wandb logging ----
         if wandb_run is not None:
-            wandb_run.log({
-                "epoch": epoch + 1,
-                "train_loss": train_loss,
-                "train_acc": train_acc,
-                "val_loss": val_loss,
-                "val_acc": val_acc,
-                "best_val_acc": best_acc,
-            })
+            wandb_run.log(
+                {
+                    "epoch": epoch + 1,
+                    "train_loss": train_loss,
+                    "train_acc": train_acc,
+                    "val_loss": val_loss,
+                    "val_acc": val_acc,
+                    "best_val_acc": best_acc,
+                }
+            )
 
-        # ---- Save last checkpoint ----
         torch.save(model.state_dict(), last_ckpt)
 
-        # ---- Save best checkpoint ----
         if val_acc > best_acc:
             best_acc = val_acc
             torch.save(model.state_dict(), best_ckpt)
             print(f"💾 Best checkpoint updated: {best_ckpt}")
 
-    # ✅ 학습 종료 후 best.pt → save_path 복사
     if os.path.exists(best_ckpt):
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         shutil.copy2(best_ckpt, save_path)

@@ -4,50 +4,68 @@
 """
 evaluate.py
 -----------
-YOLOv5Evaluator (Config-driven)
-- Uses Ultralytics val.py for evaluation
-- Unified metrics parsing via get_metrics_parser()
+This module runs YOLOv5 evaluation using Ultralytics' `val.py` script.
+
+It automatically resolves dataset paths in `data.yaml`, executes the validation
+process, parses resulting metrics through a unified metrics parser, and stores
+results as CSV files for easy tracking and comparison across experiments.
 """
 
-import subprocess
 import csv
-from datetime import datetime
-import tempfile
-import yaml
-from pathlib import Path
-from typing import Dict, Any
+import subprocess
 import sys
+import tempfile
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict
+
+import yaml
 
 ROOT_DIR = Path(__file__).resolve().parents[4]
 sys.path.append(str(ROOT_DIR))
 
-from utils.logging import get_logger
 from src.yolo_cropper.metrics.metrics import get_metrics_parser
+from utils.logging import get_logger
 
 
 class YOLOv5Evaluator:
-    """Runs YOLOv5 evaluation and parses metrics.csv results."""
+    """
+    Handles YOLOv5 model evaluation and metric parsing.
+
+    This class provides a config-driven interface for running YOLOv5’s validation
+    pipeline. It automates dataset resolution, log management, metric extraction,
+    and CSV result saving for reproducible evaluation workflows.
+    """
 
     def __init__(self, config: Dict[str, Any]):
+        """
+        Initialize the YOLOv5 evaluator from a configuration dictionary.
+
+        Args:
+            config (Dict[str, Any]): Configuration object containing YOLOv5,
+                dataset, and main parameters.
+        """
         self.logger = get_logger("yolo_cropper.YOLOv5Evaluator")
 
-        # --------------------------------------------------------
-        # Config Parsing
-        # --------------------------------------------------------
         self.cfg = config
         self.yolo_cropper_cfg = self.cfg.get("yolo_cropper", {})
         self.main_cfg = self.yolo_cropper_cfg.get("main", {})
         self.yolov5_cfg = self.yolo_cropper_cfg.get("yolov5", {})
         self.dataset_cfg = self.yolo_cropper_cfg.get("dataset", {})
 
-        # --------------------------------------------------------
-        # Directories & Parameters
-        # --------------------------------------------------------
-        self.yolov5_dir = Path(self.yolov5_cfg.get("yolov5_dir", "third_party/yolov5")).resolve()
-        self.data_yaml_path = Path(self.yolov5_cfg.get("data_yaml", "data/yolo_cropper/yolov5/data.yaml")).resolve()
+        self.yolov5_dir = Path(
+            self.yolov5_cfg.get("yolov5_dir", "third_party/yolov5")
+        ).resolve()
+        self.data_yaml_path = Path(
+            self.yolov5_cfg.get("data_yaml", "data/yolo_cropper/yolov5/data.yaml")
+        ).resolve()
         self.data_yaml = self._resolve_data_yaml(self.data_yaml_path)
-        self.saved_model_dir = Path(self.dataset_cfg.get("saved_model_dir", "saved_model/yolo_cropper")).resolve()
-        self.metrics_dir = Path(self.dataset_cfg.get("metrics_dir", "metrics/yolo_cropper")).resolve()
+        self.saved_model_dir = Path(
+            self.dataset_cfg.get("saved_model_dir", "saved_model/yolo_cropper")
+        ).resolve()
+        self.metrics_dir = Path(
+            self.dataset_cfg.get("metrics_dir", "metrics/yolo_cropper")
+        ).resolve()
         self.log_dir = self.yolov5_dir / "logs"
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -58,13 +76,17 @@ class YOLOv5Evaluator:
         self.logger.debug(f"Repo Dir  : {self.yolov5_dir}")
         self.logger.debug(f"Data YAML : {self.data_yaml}")
         self.logger.debug(f"Weights   : {self.weights_path}")
-    
 
     def _resolve_data_yaml(self, data_yaml_path: Path) -> Path:
         """
-        Convert train/val/test paths in data.yaml to absolute paths.
-        Example:
-            train: ../train/images  → /abs/path/to/train/images
+        Convert relative dataset paths in `data.yaml` to absolute paths.
+
+        This step ensures YOLOv5 can correctly locate datasets when the
+        evaluation runs from any working directory.
+
+        Returns:
+            Path: Path to a temporary resolved `data.yaml` file with absolute paths.
+
         """
         if not data_yaml_path.exists():
             raise FileNotFoundError(f"data.yaml not found: {data_yaml_path}")
@@ -89,53 +111,73 @@ class YOLOv5Evaluator:
         self.logger.info(f"[✓] Temporary data.yaml created → {resolved_yaml}")
         return resolved_yaml
 
-    # --------------------------------------------------------
-    # 🔹 Run Evaluation
-    # --------------------------------------------------------
     def run(self):
-        """Run YOLOv5 evaluation using val.py and parse metrics."""
+        """
+        Execute YOLOv5 evaluation using `val.py` and parse the resulting metrics.
+
+        This method:
+            1. Launches Ultralytics’ validation script with resolved dataset paths.
+            2. Logs all output to a timestamped log file.
+            3. Parses metrics using the unified parser (e.g., precision, recall, mAP).
+            4. Saves the metrics to a CSV file under `metrics/yolo_cropper/`.
+
+        Returns:
+            dict: Parsed evaluation metrics.
+
+        """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         log_path = self.log_dir / f"val_{timestamp}.log"
 
         cmd = [
-            "python", "val.py",
-            "--data", str(self.data_yaml),
-            "--weights", str(self.weights_path),
-            "--task", "val",
-            "--save-json"
+            "python",
+            "val.py",
+            "--data",
+            str(self.data_yaml),
+            "--weights",
+            str(self.weights_path),
+            "--task",
+            "val",
+            "--save-json",
         ]
 
-        self.logger.info(f"🚀 Starting YOLOv5 evaluation ({self.model_name.upper()})...")
+        self.logger.info(
+            f"🚀 Starting YOLOv5 evaluation ({self.model_name.upper()})..."
+        )
         self.logger.debug(f"[CMD] {' '.join(cmd)}")
 
         with open(log_path, "w", encoding="utf-8") as log_f:
-            process = subprocess.run(cmd, cwd=self.yolov5_dir, stdout=log_f, stderr=subprocess.STDOUT)
+            process = subprocess.run(
+                cmd, cwd=self.yolov5_dir, stdout=log_f, stderr=subprocess.STDOUT
+            )
 
         if process.returncode != 0:
-            raise RuntimeError(f"❌ YOLOv5 evaluation failed (code={process.returncode}). See log: {log_path}")
+            raise RuntimeError(
+                f"❌ YOLOv5 evaluation failed (code={process.returncode}). See log: {log_path}"
+            )
 
         self.logger.info(f"[✓] YOLOv5 evaluation complete → {log_path}")
 
-        # 1️⃣ Find latest results file (csv / json)
         results_dir = self.yolov5_dir / "runs" / "val"
         exp_dirs = sorted(results_dir.glob("exp*"))
         if not exp_dirs:
             raise FileNotFoundError(f"No val results found in {results_dir}")
 
-        results_file = log_path  # 🔹 pass log path to parser
+        results_file = log_path  # Use log for unified parsing
 
         parser = get_metrics_parser(self.model_name)
         metrics = parser(str(results_file))
 
-        # 3️⃣ Save metrics to CSV
         self._save_metrics_to_csv(metrics)
         return metrics
 
-    # --------------------------------------------------------
-    # 🔹 Save Metrics
-    # --------------------------------------------------------
     def _save_metrics_to_csv(self, metrics: dict):
-        """Save parsed metrics to metrics/yolo_cropper/{model_name}_metrics.csv"""
+        """
+        Save parsed evaluation metrics to a CSV file.
+
+        The file is stored under `metrics/yolo_cropper/{model_name}_metrics.csv`
+        with a timestamped record of each evaluation run.
+
+        """
         self.metrics_dir.mkdir(parents=True, exist_ok=True)
 
         csv_path = self.metrics_dir / f"{self.model_name}_metrics.csv"
@@ -157,4 +199,3 @@ class YOLOv5Evaluator:
             writer.writerow(row)
 
         self.logger.info(f"[✓] Metrics saved → {csv_path}")
-

@@ -4,13 +4,13 @@
 """
 split_dataset.py
 -----------------
-데이터셋을 train / valid / test로 분할하는 모듈.
+Module for splitting a dataset into train / valid / test sets.
 
 Features:
-- dataset_type / dataset_version 자동 경로 처리
-- config.yaml 기반 비율 로드
-- utils.load_config / utils.logging 통합
-- reproducibility 보장 (seed 고정)
+- Automatically resolves dataset path structure
+- Loads split ratios from `config.yaml`
+- Integrated with utils.load_config / utils.logging
+- Ensures reproducibility via fixed random seed
 """
 
 import random
@@ -21,22 +21,30 @@ from typing import Dict, List
 from utils.logging import get_logger
 
 
-# -----------------------------
-# Core Functions
-# -----------------------------
+# ============================================================
+# 🔹 Core Functions
+# ============================================================
 def get_images(class_path: Path) -> List[Path]:
-    """클래스 폴더 내 이미지 파일 목록 반환"""
+    """Return a sorted list of image files from a given class folder."""
     valid_ext = (".jpg", ".jpeg", ".png")
     return sorted([p for p in class_path.iterdir() if p.suffix.lower() in valid_ext])
 
 
 def make_splits(
-    images: List[Path],
-    train_ratio: float,
-    valid_ratio: float,
-    seed: int = 42
+    images: List[Path], train_ratio: float, valid_ratio: float, seed: int = 42
 ) -> Dict[str, List[Path]]:
-    """이미지 리스트를 train/valid/test로 분할"""
+    """
+    Split a list of image paths into train/valid/test subsets.
+
+    Args:
+        images (List[Path]): All image paths.
+        train_ratio (float): Ratio for training set.
+        valid_ratio (float): Ratio for validation set.
+        seed (int): Random seed for reproducibility.
+
+    Returns:
+        Dict[str, List[Path]]: Mapping of split names to image lists.
+    """
     random.seed(seed)
     random.shuffle(images)
 
@@ -56,9 +64,17 @@ def copy_images(
     class_path: Path,
     output_dir: Path,
     splits: Dict[str, List[Path]],
-    logger
+    logger,
 ) -> None:
-    """분할된 이미지를 각 split 폴더에 복사"""
+    """
+    Copy split images into their respective folders.
+
+    Example target structure:
+        output_dir/
+            ├── train/class_name/
+            ├── valid/class_name/
+            └── test/class_name/
+    """
     for split_name, files in splits.items():
         split_dir = output_dir / split_name / class_name
         split_dir.mkdir(parents=True, exist_ok=True)
@@ -73,21 +89,36 @@ def split_dataset(
     output_dir: Path,
     split_cfg: Dict[str, float],
     seed: int = 42,
-    logger=None
+    logger=None,
 ) -> None:
-    """클래스별로 train/valid/test 분할 수행"""
+    """
+    Perform dataset splitting for each class folder.
+
+    Automatically divides images into train/valid/test
+    based on provided ratios in `config.yaml`.
+
+    Args:
+        data_dir (Path): Root dataset directory containing class subfolders.
+        output_dir (Path): Destination directory for split datasets.
+        split_cfg (Dict[str, float]): Split ratios for train/valid/test.
+        seed (int): Random seed for reproducibility.
+        logger: Optional logger instance.
+    """
     if logger is None:
         logger = get_logger("split_dataset")
 
     train_ratio = split_cfg.get("train_ratio", 0.8)
     valid_ratio = split_cfg.get("valid_ratio", 0.1)
     test_ratio = split_cfg.get("test_ratio", 0.1)
-    assert abs(train_ratio + valid_ratio + test_ratio - 1.0) < 1e-6, \
-        "Train/Valid/Test 비율의 합이 1이어야 합니다."
+    assert (
+        abs(train_ratio + valid_ratio + test_ratio - 1.0) < 1e-6
+    ), "Train/Valid/Test ratios must sum to 1."
 
-    logger.info(f"📁 데이터 분할 시작: {data_dir}")
-    logger.info(f" - 출력 경로: {output_dir}")
-    logger.info(f" - 비율: train={train_ratio}, valid={valid_ratio}, test={test_ratio}")
+    logger.info(f"📁 Starting dataset split: {data_dir}")
+    logger.info(f" - Output Dir: {output_dir}")
+    logger.info(
+        f" - Ratios: train={train_ratio}, valid={valid_ratio}, test={test_ratio}"
+    )
 
     categories = [d.name for d in data_dir.iterdir() if d.is_dir()]
     if not categories:
@@ -98,7 +129,7 @@ def split_dataset(
         class_path = data_dir / class_name
         images = get_images(class_path)
         if not images:
-            logger.warning(f"[⚠️] {class_name} 폴더에 이미지가 없습니다. 건너뜀.")
+            logger.warning(f"[⚠️] No images found in {class_name}. Skipping.")
             continue
 
         splits = make_splits(images, train_ratio, valid_ratio, seed)
@@ -111,4 +142,4 @@ def split_dataset(
             f"test={len(splits['test'])}"
         )
 
-    logger.info("✅ 데이터 분할 완료!")
+    logger.info("✅ Dataset splitting complete!")

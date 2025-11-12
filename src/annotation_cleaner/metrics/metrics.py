@@ -4,34 +4,53 @@
 """
 metrics.py
 -----------
-이미지 복원 품질을 정량적으로 평가하기 위한 메트릭 함수 모음.
+A collection of image quality evaluation metrics for comparing
+restored or generated images against their reference originals.
 
-지원 메트릭:
-- L1 Distance
-- SSIM (Structural Similarity)
-- Edge IoU (Canny 기반)
+Available metrics:
+- L1 Distance: Mean absolute pixel difference
+- SSIM: Structural Similarity Index
+- Edge IoU: Edge overlap ratio using Canny detection
 """
 
-import numpy as np
 import cv2
+import numpy as np
 from skimage.metrics import structural_similarity as ssim
-
 
 # ============================================================
 # 🔹 Metric Functions
 # ============================================================
 
+
 def l1_distance(a: np.ndarray, b: np.ndarray) -> float:
-    """픽셀 단위 L1 거리 (절대 오차 평균)"""
+    """
+    Compute the mean absolute pixel difference (L1 distance) between two images.
+
+    Args:
+        a (np.ndarray): First image.
+        b (np.ndarray): Second image.
+
+    Returns:
+        float: Average absolute pixel difference.
+    """
     if a.shape != b.shape:
-        raise ValueError(f"L1 Error: 이미지 크기 불일치 {a.shape} vs {b.shape}")
+        raise ValueError(f"L1 Error: Image size mismatch {a.shape} vs {b.shape}")
     return np.mean(np.abs(a.astype(np.float32) - b.astype(np.float32)))
 
 
 def ssim_score(a: np.ndarray, b: np.ndarray) -> float:
-    """SSIM (Structural Similarity Index)"""
+    """
+    Compute the Structural Similarity Index (SSIM) between two images.
+
+    Args:
+        a (np.ndarray): First image.
+        b (np.ndarray): Second image.
+
+    Returns:
+        float: SSIM score (1.0 = identical, 0.0 = dissimilar).
+    """
     if a.shape != b.shape:
-        raise ValueError(f"SSIM Error: 이미지 크기 불일치 {a.shape} vs {b.shape}")
+        raise ValueError(f"SSIM Error: Image size mismatch {a.shape} vs {b.shape}")
     g1 = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY)
     g2 = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY)
     data_range = float(g1.max() - g1.min()) or 255.0
@@ -39,9 +58,20 @@ def ssim_score(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def edge_iou(a: np.ndarray, b: np.ndarray) -> float:
-    """Canny 엣지를 이용한 Edge IoU (경계 일치율)"""
+    """
+    Compute the Edge IoU (Intersection over Union) using Canny edge detection.
+
+    This metric measures how well the edge structures of two images overlap.
+
+    Args:
+        a (np.ndarray): First image.
+        b (np.ndarray): Second image.
+
+    Returns:
+        float: Edge IoU ratio between 0.0 and 1.0.
+    """
     if a.shape != b.shape:
-        raise ValueError(f"Edge IoU Error: 이미지 크기 불일치 {a.shape} vs {b.shape}")
+        raise ValueError(f"Edge IoU Error: Image size mismatch {a.shape} vs {b.shape}")
     g1 = cv2.cvtColor(a, cv2.COLOR_BGR2GRAY).astype(np.uint8)
     g2 = cv2.cvtColor(b, cv2.COLOR_BGR2GRAY).astype(np.uint8)
     e1, e2 = cv2.Canny(g1, 100, 200), cv2.Canny(g2, 100, 200)
@@ -54,8 +84,18 @@ def edge_iou(a: np.ndarray, b: np.ndarray) -> float:
 # 🔹 Wrapper
 # ============================================================
 
+
 def compute_all_metrics(img1: np.ndarray, img2: np.ndarray) -> dict:
-    """모든 품질 지표를 한 번에 계산"""
+    """
+    Compute all supported quality metrics at once.
+
+    Args:
+        img1 (np.ndarray): Reference or original image.
+        img2 (np.ndarray): Generated or restored image.
+
+    Returns:
+        dict: Dictionary containing all metric results.
+    """
     return {
         "L1": l1_distance(img1, img2),
         "SSIM": ssim_score(img1, img2),

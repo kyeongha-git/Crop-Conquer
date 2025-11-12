@@ -4,38 +4,46 @@
 """
 cropper.py
 -----------
-Unified Cropper (Config-driven)
-- Supports YOLOv2 / YOLOv4 / YOLOv5 / YOLOv8 result.json outputs.
-- Reads configuration from upper controller or CLI (for debug).
+This module extracts and saves object regions detected by YOLO models
+based on the bounding box information stored in `result.json`.
 
-Usage (debug):
-    python src/yolo_cropper/core/cropper.py --config utils/config.yaml
+It reads the YOLO detection results, crops the corresponding regions
+from the original images, and organizes them into class-specific folders
+(e.g., `repair`, `replace`). Images without detections are copied as-is.
+
+In short, this script turns YOLO detection outputs into a clean,
+cropped dataset ready for training or analysis.
 """
 
-import os
 import json
+import os
 import shutil
-import cv2
-from pathlib import Path
-from typing import Dict, Any
 import sys
+from pathlib import Path
+from typing import Any, Dict
+
+import cv2
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
 sys.path.append(str(ROOT_DIR))
 
-from utils.logging import get_logger, setup_logging
-from utils.load_config import load_yaml_config
+from utils.logging import get_logger
 
 
 class YOLOCropper:
-    """Unified cropper that handles result.json from multiple YOLO versions."""
+    """
+    Crops detected regions from original images using YOLO detection results.
+
+    The cropper reads `result.json` and `predict.txt`, determines the
+    bounding boxes for each detection, and saves cropped regions (or
+    original images if no detection) into structured output directories.
+    """
 
     def __init__(self, config: Dict[str, Any]):
+        """Initialize cropper with configuration and paths."""
         self.logger = get_logger("yolo_cropper.Cropper")
 
-        # --------------------------------------------------------
-        # Config 구조 해석
-        # --------------------------------------------------------
+        # Load configuration
         self.cfg = config
         self.yolo_cropper_cfg = self.cfg.get("yolo_cropper", {})
         self.main_cfg = self.yolo_cropper_cfg.get("main", {})
@@ -48,15 +56,14 @@ class YOLOCropper:
         self.min_size = int(self.cropper_cfg.get("min_size", 8))
         self.pad = int(self.cropper_cfg.get("pad", 0))
 
-        # --------------------------------------------------------
-        # Paths
-        # --------------------------------------------------------
+        # Resolve paths
         self.json_path = Path(
             f"{self.dataset_cfg.get('results_dir', 'outputs/json_results')}/{self.model_name}/result.json"
         ).resolve()
-        self.predict_list = Path(f"{self.dataset_cfg.get('results_dir', 'outputs/json_results')}/predict.txt"
+        self.predict_list = Path(
+            f"{self.dataset_cfg.get('results_dir', 'outputs/json_results')}/predict.txt"
         ).resolve()
-        self.output_dir = Path(self.main_cfg.get('output_dir', "data/generation_crop"))
+        self.output_dir = Path(self.main_cfg.get("output_dir", "data/generation_crop"))
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -68,13 +75,24 @@ class YOLOCropper:
 
     # --------------------------------------------------------
     def crop_from_json(self):
-        """Perform cropping from result.json"""
+        """
+        Crop detected regions from images according to YOLO `result.json`.
+
+        For each image listed in `predict.txt`:
+        - Crops regions based on bounding boxes in `result.json`
+        - Saves each cropped patch under its class directory
+        - Copies original images when no detection exists
+        """
         if not self.json_path.exists():
             raise FileNotFoundError(f"❌ result.json not found → {self.json_path}")
         if not self.predict_list.exists():
             raise FileNotFoundError(f"❌ predict.txt not found → {self.predict_list}")
 
-        pred_imgs = [ln.strip() for ln in self.predict_list.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        pred_imgs = [
+            ln.strip()
+            for ln in self.predict_list.read_text(encoding="utf-8").splitlines()
+            if ln.strip()
+        ]
         pred_set = set(pred_imgs)
 
         with open(self.json_path, "r", encoding="utf-8") as f:
@@ -97,7 +115,9 @@ class YOLOCropper:
             base = os.path.splitext(os.path.basename(img_path))[0]
 
             parts = os.path.normpath(img_path).split(os.sep)
-            class_name = next((c for c in ["repair", "replace"] if c in parts), "unknown")
+            class_name = next(
+                (c for c in ["repair", "replace"] if c in parts), "unknown"
+            )
 
             out_dir = self.output_dir / class_name
             out_dir.mkdir(exist_ok=True, parents=True)
@@ -126,40 +146,27 @@ class YOLOCropper:
                 crops_here += 1
                 saved_crops += 1
 
-            # 🔹 No detection → copy original
+            # If no detections, copy original image
             if crops_here == 0:
                 shutil.copy2(img_path, out_dir / os.path.basename(img_path))
                 saved_originals += 1
 
-        # 🔹 Images missing in JSON
+        # Handle images missing in JSON
         missing = pred_set - processed
         for img_path in missing:
             if not os.path.exists(img_path):
                 continue
             parts = os.path.normpath(img_path).split(os.sep)
-            class_name = next((c for c in ["repair", "replace"] if c in parts), "unknown")
+            class_name = next(
+                (c for c in ["repair", "replace"] if c in parts), "unknown"
+            )
             out_dir = self.output_dir / class_name
             out_dir.mkdir(exist_ok=True, parents=True)
             shutil.copy2(img_path, out_dir / os.path.basename(img_path))
             saved_originals += 1
 
-        self.logger.info(f"[✓] Cropping complete ({self.model_name.upper()}) → {self.output_dir}")
+        self.logger.info(
+            f"[✓] Cropping complete ({self.model_name.upper()}) → {self.output_dir}"
+        )
         self.logger.info(f"   - Saved Crops   : {saved_crops}")
         self.logger.info(f"   - Saved Originals (No Detection) : {saved_originals}")
-
-
-# --------------------------------------------------------
-# ✅ CLI Debug Entry
-# --------------------------------------------------------
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Unified Cropper (Config-driven)")
-    parser.add_argument("--config", type=str, default="utils/config.yaml", help="Path to config.yaml")
-    args = parser.parse_args()
-
-    setup_logging("logs/yolo_cropper")
-    cfg = load_yaml_config(args.config)
-
-    cropper = YOLOCropper(config=cfg)
-    cropper.crop_from_json()

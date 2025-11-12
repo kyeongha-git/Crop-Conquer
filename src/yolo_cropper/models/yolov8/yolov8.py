@@ -4,16 +4,17 @@
 """
 yolov8.py
 ----------
-YOLO v8 Pipeline (Config-driven)
+This module defines the unified YOLOv8 pipeline.
 
 Steps:
-1️⃣ train
-2️⃣ evaluate
-3️⃣ predict
-4️⃣ generate predict.txt for Cropping
-5️⃣ Convert txt to json
-6️⃣ Crop
+1️⃣ Train model
+2️⃣ Evaluate performance
+3️⃣ Generate `predict.txt`
+4️⃣ Run prediction
+5️⃣ Convert detections to JSON
+6️⃣ Perform ROI cropping
 """
+
 
 import sys
 from pathlib import Path
@@ -21,22 +22,31 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[4]
 sys.path.append(str(ROOT_DIR))
 
+from src.yolo_cropper.core.converter import YOLOConverter
+from src.yolo_cropper.core.cropper import YOLOCropper
+from src.yolo_cropper.core.make_predict import YOLOPredictListGenerator
+from src.yolo_cropper.models.yolov8.evaluate import YOLOv8Evaluator
+from src.yolo_cropper.models.yolov8.predict import YOLOv8Predictor
+# === YOLO Submodules ===
+from src.yolo_cropper.models.yolov8.train import YOLOv8Trainer
 from utils.load_config import load_yaml_config
 from utils.logging import get_logger, setup_logging
 
-# === YOLO Submodules ===
-from src.yolo_cropper.models.yolov8.train import YOLOv8Trainer
-from src.yolo_cropper.models.yolov8.evaluate import YOLOv8Evaluator
-from src.yolo_cropper.models.yolov8.predict import YOLOv8Predictor
-from src.yolo_cropper.core.make_predict import YOLOPredictListGenerator
-from src.yolo_cropper.core.converter import YOLOConverter
-from src.yolo_cropper.core.cropper import YOLOCropper
-
 
 class YOLOv8Pipeline:
-    """Unified YOLOv8 pipeline orchestrator (config-driven)."""
+    """
+    Unified YOLOv8 pipeline orchestrator.
+
+    """
 
     def __init__(self, config_path: str = "utils/config.yaml"):
+        """
+        Initialize the YOLOv8 pipeline.
+
+        Args:
+            config_path (str): Path to the YAML configuration file defining
+                model, dataset, and runtime parameters.
+        """
         setup_logging("logs/yolo_cropper")
         self.logger = get_logger("yolo_cropper.YOLOv8Pipeline")
 
@@ -55,7 +65,9 @@ class YOLOv8Pipeline:
 
         # Paths
         self.model_name = self.main_cfg.get("model_name", "yolov8s").lower()
-        self.saved_model_dir = Path(self.dataset_cfg.get("saved_model_dir", "saved_model/yolo_cropper")).resolve()
+        self.saved_model_dir = Path(
+            self.dataset_cfg.get("saved_model_dir", "saved_model/yolo_cropper")
+        ).resolve()
         self.train_dataset_dir = Path(
             f"{self.yolov8_cfg.get('data_yaml', 'data/yolo_cropper/yolov8/data.yaml')}"
         ).resolve()
@@ -64,7 +76,6 @@ class YOLOv8Pipeline:
 
         # Derived paths
         self.weight_path = self.saved_model_dir / f"{self.model_name}.pt"
-
 
         # Logging info
         self.logger.info(f"Initialized YOLO v8 Pipeline ({self.model_name.upper()})")
@@ -79,22 +90,23 @@ class YOLOv8Pipeline:
     def step_train(self):
         self.logger.info("[STEP 1] Starting YOLO v8 training...")
         if self.weight_path.exists():
-            self.logger.info(f"[SKIP] Found existing trained model → {self.weight_path}")
+            self.logger.info(
+                f"[SKIP] Found existing trained model → {self.weight_path}"
+            )
             return
         trainer = YOLOv8Trainer(config=self.cfg)
         trainer.run()
         self.logger.info("[✓] Training step done")
-        
+
     # --------------------------------------------------------
     # Step 2️⃣ Evaluate
     # --------------------------------------------------------
     def step_evaluate(self):
         self.logger.info("[STEP 2] Evaluation starts")
-        evaluator  = YOLOv8Evaluator(config=self.cfg)
+        evaluator = YOLOv8Evaluator(config=self.cfg)
         metrics = evaluator.run()
         self.logger.info("[✓] Evaluation step done")
         return metrics
-
 
     # --------------------------------------------------------
     # Step 3️⃣ Make predict.txt
@@ -105,7 +117,6 @@ class YOLOv8Pipeline:
         maker.run()
         self.logger.info("[✓] predict.txt generated")
 
-
     # --------------------------------------------------------
     # Step 4️⃣ Predict (auto multi-folder)
     # --------------------------------------------------------
@@ -115,7 +126,6 @@ class YOLOv8Pipeline:
         predictor.run()
         self.logger.info("[✓] Prediction step done")
 
-
     # --------------------------------------------------------
     # Step 5️⃣ Converter (YOLOv5 detect → unified result.json)
     # --------------------------------------------------------
@@ -124,7 +134,7 @@ class YOLOv8Pipeline:
         conv = YOLOConverter(config=self.cfg)  # config-driven
         conv.run()
         self.logger.info("[✓] Conversion step done")
-    
+
     # -------------------------------------------------
     # Step 6️⃣ Cropper (result.json 기반 ROI crop)
     # -------------------------------------------------
@@ -148,6 +158,7 @@ class YOLOv8Pipeline:
         self.logger.info("=== ✅ YOLOv8 PIPELINE COMPLETE ===")
         # return metrics
 
+
 # --------------------------------------------------------
 # CLI Entry Point
 # --------------------------------------------------------
@@ -155,8 +166,12 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="YOLO v8 Unified Pipeline Runner")
-    parser.add_argument("--config", type=str, default="utils/config.yaml",
-                        help="Path to configuration YAML file")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="utils/config.yaml",
+        help="Path to configuration YAML file",
+    )
     args = parser.parse_args()
 
     pipeline = YOLOv8Pipeline(config_path=args.config)

@@ -4,33 +4,32 @@
 """
 test_evaluator.py
 -----------------
-Evaluator 클래스 단위 테스트
+Unit and integration tests for the `Evaluator` class.
 
-테스트 목표:
-- config 주입 기반 초기화 검증
-- metric 계산 로직 검증 (mock image)
-- Full Image 평가 정상 수행 여부
-- YOLO Crop 평가(mock YOLO 예측) 정상 수행 여부
+Test Goals:
+1️⃣ Verify initialization from injected configuration.
+2️⃣ Validate metric computation logic (mock image pairs).
+3️⃣ Confirm that full-image evaluation produces correct metrics and CSV output.
+4️⃣ Ensure YOLO-based crop evaluation works correctly with mocked YOLO predictions.
 """
 
-import os
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import cv2
-import pytest
-import tempfile
 import numpy as np
 import pandas as pd
-from pathlib import Path
+import pytest
 import torch
-from unittest.mock import patch, MagicMock
 
 from src.annotation_cleaner.evaluate import Evaluator
 
 
 # ============================================================
-# 🧱 테스트용 헬퍼 함수
+# 🧱 Helper Functions
 # ============================================================
 def create_dummy_image(path: Path, color=(128, 128, 128), size=(64, 64)):
-    """단색 더미 이미지 생성"""
+    """Create a uniform-color dummy image for testing."""
     img = np.full((*size, 3), color, dtype=np.uint8)
     cv2.imwrite(str(path), img)
     return path
@@ -42,14 +41,16 @@ def create_dummy_image(path: Path, color=(128, 128, 128), size=(64, 64)):
 @pytest.fixture
 def temp_dataset(tmp_path):
     """
-    더미 원본/생성 이미지 구조를 만드는 fixture.
-    예시 구조:
+    Create a dummy dataset structure for Evaluator tests.
+
+    Structure:
     orig/
         repair/img1.jpg
         replace/img1.jpg
     gen/
         repair/img1.jpg
         replace/img1.jpg
+
     """
     orig_dir = tmp_path / "orig"
     gen_dir = tmp_path / "gen"
@@ -70,9 +71,10 @@ def temp_dataset(tmp_path):
 
 
 # ============================================================
-# 🧪 테스트 1: Evaluator 초기화
+# 🧪 Test 1: Initialization
 # ============================================================
 def test_evaluator_initialization(temp_dataset):
+    """Evaluator should initialize correctly with injected config."""
     cfg = {
         "orig_dir": str(temp_dataset["orig_dir"]),
         "gen_dir": str(temp_dataset["gen_dir"]),
@@ -89,9 +91,10 @@ def test_evaluator_initialization(temp_dataset):
 
 
 # ============================================================
-# 🧪 테스트 2: _compute_metrics 동작 검증
+# 🧪 Test 2: Metric Computation
 # ============================================================
 def test_compute_metrics_returns_values(temp_dataset):
+    """_compute_metrics should return numeric metric results."""
     evaluator = Evaluator(
         orig_dir=temp_dataset["orig_dir"],
         gen_dir=temp_dataset["gen_dir"],
@@ -103,15 +106,17 @@ def test_compute_metrics_returns_values(temp_dataset):
 
     img = np.full((32, 32, 3), 127, dtype=np.uint8)
     result = evaluator._compute_metrics(img, img)
+
     assert isinstance(result, dict)
     assert all(k in result for k in ["SSIM", "L1", "Edge_IoU"])
     assert all(isinstance(v, float) for v in result.values())
 
 
 # ============================================================
-# 🧪 테스트 3: Full Image 평가 (metrics.csv 생성 여부)
+# 🧪 Test 3: Full Image Evaluation
 # ============================================================
 def test_evaluate_full_images_creates_csv(temp_dataset):
+    """Full-image evaluation should produce valid CSV output."""
     evaluator = Evaluator(
         orig_dir=temp_dataset["orig_dir"],
         gen_dir=temp_dataset["gen_dir"],
@@ -124,19 +129,18 @@ def test_evaluate_full_images_creates_csv(temp_dataset):
     save_path = temp_dataset["metric_dir"] / "metrics_full_image.csv"
     avg = evaluator.evaluate_full_images(save_path)
 
-    assert save_path.exists(), "CSV 파일이 생성되지 않았습니다."
+    assert save_path.exists(), "CSV file not created."
     assert isinstance(avg, dict)
     df = pd.read_csv(save_path)
-    assert not df.empty
+    assert not df.empty, "Metrics CSV is empty."
 
 
 # ============================================================
-# 🧪 테스트 4: YOLO Crop 평가 (Mocking 기반)
+# 🧪 Test 4: YOLO Crop Evaluation
 # ============================================================
 @patch("src.annotation_cleaner.evaluate.YOLO")
 def test_evaluate_with_yolo_crop_uses_tempdir(mock_yolo, temp_dataset):
-    """YOLO 모델을 mock 처리하여 임시 폴더가 잘 동작하는지 검증"""
-    # YOLO mock 설정
+    """YOLO crop evaluation should execute correctly with a mocked model."""
     mock_pred = MagicMock()
     mock_pred.boxes.xyxy = torch.tensor([[0, 0, 16, 16]])
     mock_yolo.return_value.predict.return_value = [mock_pred]
@@ -151,12 +155,11 @@ def test_evaluate_with_yolo_crop_uses_tempdir(mock_yolo, temp_dataset):
     )
 
     save_path = temp_dataset["metric_dir"] / "metrics_yolo_crop.csv"
-
-    # 임시 디렉토리 내에서 YOLO Crop 평가 실행
     avg = evaluator.evaluate_with_yolo_crop(save_path)
-    assert isinstance(avg, dict)
-    assert save_path.exists()
 
-    # 실제 gen_dir 아래에는 crop/bbox 폴더가 생기지 않아야 함
+    assert isinstance(avg, dict)
+    assert save_path.exists(), "CSV file not generated for YOLO crop metrics."
+
+    # Ensure no leftover folders are created under gen_dir
     assert not (evaluator.gen_dir / "crops").exists()
     assert not (evaluator.gen_dir / "bboxes").exists()

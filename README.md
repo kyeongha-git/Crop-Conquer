@@ -26,7 +26,11 @@ This script will:
 
 - Clone external repositories (Darknet for YOLOv2/v4 and YOLOv5) into the third_party/ directory
 
-- After setup, activate the environment:
+- Download pretrained YOLOv2 and YOLOv4 weights
+
+- Download fine-tuned YOLOv8s weights from Google Drive (these are custom-trained weights used in the project for reproducible evaluation)
+
+- After setup, activate the environment using:
 
 ```bash
 conda activate tf_env

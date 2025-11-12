@@ -63,6 +63,29 @@ else
     echo "✅ YOLOv4 pretrained weights already exist. Skipping download."
 fi
 
+# 7️⃣ Download Trained YOLOv8s Weights (from Google Drive)
+echo "📥 Downloading trained YOLOv8s model..."
+MODEL_DIR="saved_model/yolo_cropper"
+mkdir -p "$MODEL_DIR"
+
+YOLOV5_GDRIVE_ID="1eNZNze7uYNEXsdsn14lrUZ4dehwYbCWA"  # ⚠️ 여기에 실제 Google Drive 파일 ID 입력
+YOLOV5_MODEL_PATH="$MODEL_DIR/yolov8s.pt"
+
+# Install gdown if not present
+if ! command -v gdown &> /dev/null
+then
+    echo "📦 Installing gdown..."
+    pip install gdown
+fi
+
+if [ ! -f "$YOLOV5_MODEL_PATH" ]; then
+    echo "⬇️ Downloading yolov5.pt from Google Drive..."
+    gdown --id "$YOLOV5_GDRIVE_ID" -O "$YOLOV5_MODEL_PATH"
+    echo "✅ YOLOv5 pretrained model downloaded successfully → $YOLOV5_MODEL_PATH"
+else
+    echo "✅ YOLOv5 pretrained model already exists. Skipping download."
+fi
+
 echo "🎉 Setup complete!"
 echo "➡️ To activate environment, run:"
 echo "   conda activate tf_env"

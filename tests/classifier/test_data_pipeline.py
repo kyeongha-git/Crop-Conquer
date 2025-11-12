@@ -1,24 +1,35 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
+"""
+test_classifier_data_pipeline.py
+--------------------------------
+Unit tests for the classification data pipeline.
+
+Covers:
+1️⃣ Data loader utilities (list_image_paths, label mapping, dataset initialization)
+2️⃣ Data preprocessor transformations for training and evaluation modes
+"""
+
 import pytest
 import torch
 from PIL import Image
-from src.classifier.data.cnn_data_loader import (
-    list_image_paths,
-    build_label_mappings,
-    ClassificationDataset,
-)
+
+from src.classifier.data.cnn_data_loader import (ClassificationDataset,
+                                                 build_label_mappings,
+                                                 list_image_paths)
 from src.classifier.data.data_preprocessing import DataPreprocessor
 
 
 # ==========================================================
-# 1️⃣ Data Loader Unit Tests (새 구조 반영)
+# 1️⃣ Data Loader Unit Tests
 # ==========================================================
-
 def test_list_image_paths(tmp_path):
-    """list_image_paths(): 디렉토리 구조 탐색 및 클래스별 최소 2개 이상 샘플 검증"""
+    """list_image_paths(): should traverse directory and detect classes."""
     (tmp_path / "repair").mkdir()
     (tmp_path / "replace").mkdir()
 
-    # 클래스별 2개씩 이미지 생성
+    # Create 2 images per class
     for cls in ["repair", "replace"]:
         for i in range(2):
             Image.new("RGB", (10, 10)).save(tmp_path / cls / f"img_{i}.jpg")
@@ -27,15 +38,17 @@ def test_list_image_paths(tmp_path):
     labels = [p[1] for p in pairs]
 
     from collections import Counter
+
     label_counts = Counter(labels)
 
     assert set(labels) == {"repair", "replace"}
-    assert all(count >= 2 for count in label_counts.values()), \
-        f"❌ 클래스별 샘플 수 부족: {label_counts}"
+    assert all(
+        count >= 2 for count in label_counts.values()
+    ), f"❌ Each class should have ≥2 samples: {label_counts}"
 
 
 def test_build_label_mappings():
-    """build_label_mappings(): 라벨 인덱싱 생성 테스트"""
+    """build_label_mappings(): should produce bidirectional label-index maps."""
     labels = ["repair", "replace", "repair"]
     label_to_idx, idx_to_label = build_label_mappings(labels)
 
@@ -45,8 +58,7 @@ def test_build_label_mappings():
 
 
 def test_classification_dataset_init(tmp_path):
-    """ClassificationDataset: 기본 로딩 및 라벨 매핑 테스트 (input_dir 기반)"""
-    # 경로: data/original/train/repair/img.jpg
+    """ClassificationDataset: should load images and build label mapping."""
     data_dir = tmp_path / "data" / "original" / "train" / "repair"
     data_dir.mkdir(parents=True)
     Image.new("RGB", (10, 10)).save(data_dir / "x.jpg")
@@ -54,8 +66,9 @@ def test_classification_dataset_init(tmp_path):
     dataset = ClassificationDataset(
         input_dir=str(tmp_path / "data" / "original"),
         split="train",
-        verbose=False
+        verbose=False,
     )
+
     assert len(dataset) == 1
     assert isinstance(dataset.image_paths[0], str)
     assert dataset.labels[0] == "repair"
@@ -63,7 +76,7 @@ def test_classification_dataset_init(tmp_path):
 
 
 def test_classification_dataset_getitem(tmp_path):
-    """ClassificationDataset: __getitem__ 동작 테스트"""
+    """ClassificationDataset: __getitem__() should return a tensor and label index."""
     data_dir = tmp_path / "data" / "original" / "train" / "replace"
     data_dir.mkdir(parents=True)
     img_path = data_dir / "img.jpg"
@@ -72,8 +85,9 @@ def test_classification_dataset_getitem(tmp_path):
     dataset = ClassificationDataset(
         input_dir=str(tmp_path / "data" / "original"),
         split="train",
-        verbose=False
+        verbose=False,
     )
+
     image, label = dataset[0]
     assert isinstance(image, torch.Tensor)
     assert image.shape[0] == 3
@@ -81,11 +95,11 @@ def test_classification_dataset_getitem(tmp_path):
 
 
 # ==========================================================
-# 2️⃣ Data Preprocessor Unit Tests (기존 그대로 유지)
+# 2️⃣ Data Preprocessor Unit Tests
 # ==========================================================
-
 @pytest.fixture(scope="module")
 def preprocessor():
+    """Fixture providing a shared DataPreprocessor instance."""
     return DataPreprocessor(img_size=(224, 224))
 
 
@@ -100,7 +114,7 @@ def preprocessor():
     ],
 )
 def test_get_transform_eval(preprocessor, model_name, expected_mean):
-    """get_transform(): 평가용 변환 테스트"""
+    """get_transform(): should return deterministic evaluation transform."""
     transform = preprocessor.get_transform(model_name, mode="eval")
     img = Image.new("RGB", (100, 100))
     tensor = transform(img)
@@ -116,10 +130,11 @@ def test_get_transform_eval(preprocessor, model_name, expected_mean):
 
 @pytest.mark.parametrize("model_name", ["vgg", "resnet", "mobilenet_v2"])
 def test_get_transform_train_randomness(preprocessor, model_name):
-    """get_transform(): 학습용 변환 무작위성 테스트"""
+    """get_transform(): should include stochastic augmentations in training mode."""
     transform = preprocessor.get_transform(model_name, mode="train")
 
     import numpy as np
+
     arr = np.random.randint(0, 256, (100, 100, 3), dtype=np.uint8)
     img = Image.fromarray(arr)
 
@@ -127,18 +142,17 @@ def test_get_transform_train_randomness(preprocessor, model_name):
     out2 = transform(img)
 
     diff_ratio = torch.mean(torch.abs(out1 - out2)).item()
-    assert diff_ratio > 1e-4, f"{model_name} augmentation seems inactive"
+    assert diff_ratio > 1e-4, f"{model_name}: augmentation seems inactive"
 
 
 def test_invalid_model_raises(preprocessor):
-    """지원하지 않는 모델명 예외 처리"""
-    import pytest
+    """get_transform(): should raise ValueError for unsupported model names."""
     with pytest.raises(ValueError):
         preprocessor.get_transform("invalid_model")
 
 
 def test_internal_compose(preprocessor):
-    """_compose(): 구성 요소 포함 여부 테스트"""
+    """_compose(): should include/exclude augmentations correctly."""
     mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
     t_train = preprocessor._compose(mean, std, augment=True)
     t_eval = preprocessor._compose(mean, std, augment=False)
